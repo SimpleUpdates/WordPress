@@ -1,0 +1,109 @@
+/*
+Theme Name: SimpleUpdates Blog Template
+Theme URI: http://wordpress.org/extend/themes/twentyten
+Description: This theme wraps the WordPress core using the "blog" page type template from your SimpleUpdates site.
+Author: the SimpleUpdates team
+Author URI: http://simpleupdates.com
+Version: 2.0
+Text Domain: su
+*/
+
+h2 {
+	font: arial, helvetica, sans-serif;
+	font-size: 16px;
+        margin-top: 0;
+	color: #000000;
+}
+
+h3 {
+	border-bottom: 1px dotted #ccc;
+	font: arial, helvetica, sans-serif;
+        font-weight: bold;
+        font-size: 18px;
+        margin: 0px 0 2px 0;
+        padding-bottom: 2px;
+	color: rgb(152, 27, 30);
+}
+}
+
+.headline {
+    font-family: arial, helvetica, sans-serif;
+    color: #981b1e;
+    font-size: 18px;
+    font-weight: bold; }
+.subheadline {
+    font-family: arial, helvetica, sans-serif;
+    color: #000000;
+    font-size: 16px;
+    font-weight: bold; }
+.body {
+    font-family: arial, helvetica, sans-serif;
+    color : #000000;
+    font-size : 8px; }
+.caption {
+    font-family: arial, helvetica, sans-serif;
+    color : #000000;
+    font-size : 10px; }
+.pullquote {
+    font-family: arial, helvetica, sans-serif;
+    color : #000000;
+    font-size : 14px;
+    font-style : italic; }
+.credit {
+    font-family: arial, helvetica, sans-serif;
+    color : #ffffff;
+    font-size : 14px;
+    font-style : italic; }
+
+.bottom_links {
+    font-family : arial, helvetica, verdana;
+    font-size : 8pt; 
+    text-align : center; 
+    color : #ffffff; }
+
+a.footer {
+    font-family : arial, helvetica, verdana;
+    color : #ffffff; }
+
+a   {
+    font-family : arial, helvetica, verdana; }
+
+a:hover { font-weight: bold }
+
+a:link { text-decoration : none; color : #003366}
+
+a:visited { text-decoration : none }
+
+.table_footer {
+    font-family : arial, helvetica, verdana;
+    font-size : 8pt;
+    color : #ffffff;
+    text-align : center; }
+
+.system {
+	font-size : 10pt;
+   	font-face : arial, helvetica, verdana; }
+.syssmall {
+	font-size : 8pt;
+   	font-face : arial, helvetica, verdana;
+   	color : #000000; }
+.bodysmall {
+	font-size : 8pt;
+        color : #000000;
+   	font-face : arial, helvetica, verdana; }
+.bodysmallgrey {
+	font-size: 8pt;
+   	font-face: arial, helvetica, verdana;
+   	color: #000000; }
+table { 
+    font-family:  arial, helvetica, sans-serif;
+    font-size: 10pt; }
+
+.OldPrice {
+	color : #ff0000;
+        text-decoration: line-through; }
+.SalePrice {
+   	color: #000000; }
+
+.storytitle a{
+	text-decoration: none; }
