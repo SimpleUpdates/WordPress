@@ -1298,8 +1298,7 @@ function wp_ajax_sample_permalink() {
 	$post_id = isset($_POST['post_id'])? intval($_POST['post_id']) : 0;
 	$title = isset($_POST['new_title'])? $_POST['new_title'] : '';
 	$slug = isset($_POST['new_slug'])? $_POST['new_slug'] : null;
-	$screen = isset( $_POST['screen'] ) ? $_POST['screen'] : 'post';
-	wp_die( get_sample_permalink_html( $post_id, $title, $slug, $screen ) );
+	wp_die( get_sample_permalink_html( $post_id, $title, $slug ) );
 }
 
 function wp_ajax_inline_save() {
@@ -1422,37 +1421,27 @@ function wp_ajax_find_posts() {
 
 	check_ajax_referer( 'find-posts' );
 
-	if ( empty($_POST['ps']) )
-		wp_die();
+	$post_types = get_post_types( array( 'public' => true ), 'objects' );
+	unset( $post_types['attachment'] );
 
-	if ( !empty($_POST['post_type']) && in_array( $_POST['post_type'], get_post_types() ) )
-		$what = $_POST['post_type'];
-	else
-		$what = 'post';
-
-	$s = stripslashes($_POST['ps']);
-	preg_match_all('/".*?("|$)|((?<=[\\s",+])|^)[^\\s",+]+/', $s, $matches);
-	$search_terms = array_map('_search_terms_tidy', $matches[0]);
-
+	$s = stripslashes( $_POST['ps'] );
 	$searchand = $search = '';
-	foreach ( (array) $search_terms as $term ) {
-		$term = esc_sql( like_escape( $term ) );
-		$search .= "{$searchand}(($wpdb->posts.post_title LIKE '%{$term}%') OR ($wpdb->posts.post_content LIKE '%{$term}%'))";
-		$searchand = ' AND ';
-	}
-	$term = esc_sql( like_escape( $s ) );
-	if ( count($search_terms) > 1 && $search_terms[0] != $s )
-		$search .= " OR ($wpdb->posts.post_title LIKE '%{$term}%') OR ($wpdb->posts.post_content LIKE '%{$term}%')";
+	$args = array(
+		'post_type' => array_keys( $post_types ),
+		'post_status' => 'any',
+		'posts_per_page' => 50,
+	);
+	if ( '' !== $s )
+		$args['s'] = $s;
 
-	$posts = $wpdb->get_results( "SELECT ID, post_title, post_status, post_date FROM $wpdb->posts WHERE post_type = '$what' AND post_status IN ('draft', 'publish') AND ($search) ORDER BY post_date_gmt DESC LIMIT 50" );
+	$posts = get_posts( $args );
 
-	if ( ! $posts ) {
-		$posttype = get_post_type_object($what);
-		wp_die( $posttype->labels->not_found );
-	}
+	if ( ! $posts )
+		wp_die( __('No items found.') );
 
-	$html = '<table class="widefat" cellspacing="0"><thead><tr><th class="found-radio"><br /></th><th>'.__('Title').'</th><th>'.__('Date').'</th><th>'.__('Status').'</th></tr></thead><tbody>';
+	$html = '<table class="widefat" cellspacing="0"><thead><tr><th class="found-radio"><br /></th><th>'.__('Title').'</th><th class="no-break">'.__('Type').'</th><th class="no-break">'.__('Date').'</th><th class="no-break">'.__('Status').'</th></tr></thead><tbody>';
 	foreach ( $posts as $post ) {
+		$title = trim( $post->post_title ) ? $post->post_title : __( '(no title)' );
 
 		switch ( $post->post_status ) {
 			case 'publish' :
@@ -1478,17 +1467,16 @@ function wp_ajax_find_posts() {
 		}
 
 		$html .= '<tr class="found-posts"><td class="found-radio"><input type="radio" id="found-'.$post->ID.'" name="found_post_id" value="' . esc_attr($post->ID) . '"></td>';
-		$html .= '<td><label for="found-'.$post->ID.'">'.esc_html( $post->post_title ).'</label></td><td>'.esc_html( $time ).'</td><td>'.esc_html( $stat ).'</td></tr>'."\n\n";
+		$html .= '<td><label for="found-'.$post->ID.'">' . esc_html( $title ) . '</label></td><td class="no-break">' . esc_html( $post_types[$post->post_type]->labels->singular_name ) . '</td><td class="no-break">'.esc_html( $time ) . '</td><td class="no-break">' . esc_html( $stat ). ' </td></tr>' . "\n\n";
 	}
+
 	$html .= '</tbody></table>';
 
 	$x = new WP_Ajax_Response();
 	$x->add( array(
-		'what' => $what,
 		'data' => $html
 	));
 	$x->send();
-
 }
 
 function wp_ajax_widgets_order() {
@@ -1597,12 +1585,12 @@ function wp_ajax_upload_attachment() {
 	check_ajax_referer( 'media-form' );
 
 	if ( ! current_user_can( 'upload_files' ) )
-		wp_send_json_error();
+		wp_die();
 
 	if ( isset( $_REQUEST['post_id'] ) ) {
 		$post_id = $_REQUEST['post_id'];
 		if ( ! current_user_can( 'edit_post', $post_id ) )
-			wp_send_json_error();
+			wp_die();
 	} else {
 		$post_id = null;
 	}
@@ -1613,20 +1601,30 @@ function wp_ajax_upload_attachment() {
 	if ( isset( $post_data['context'] ) && in_array( $post_data['context'], array( 'custom-header', 'custom-background' ) ) ) {
 		$wp_filetype = wp_check_filetype_and_ext( $_FILES['async-upload']['tmp_name'], $_FILES['async-upload']['name'], false );
 		if ( ! wp_match_mime_types( 'image', $wp_filetype['type'] ) ) {
-			wp_send_json_error( array(
-				'message' => __( 'The uploaded file is not a valid image. Please try again.' ),
-				'filename' => $_FILES['async-upload']['name'],
+			echo json_encode( array(
+				'success' => false,
+				'data'    => array(
+					'message'  => __( 'The uploaded file is not a valid image. Please try again.' ),
+					'filename' => $_FILES['async-upload']['name'],
+				)
 			) );
+
+			wp_die();
 		}
 	}
 
 	$attachment_id = media_handle_upload( 'async-upload', $post_id, $post_data );
 
 	if ( is_wp_error( $attachment_id ) ) {
-		wp_send_json_error( array(
-			'message'  => $attachment_id->get_error_message(),
-			'filename' => $_FILES['async-upload']['name'],
+		echo json_encode( array(
+			'success' => false,
+			'data'    => array(
+				'message'  => $attachment_id->get_error_message(),
+				'filename' => $_FILES['async-upload']['name'],
+			)
 		) );
+
+		wp_die();
 	}
 
 	if ( isset( $post_data['context'] ) && isset( $post_data['theme'] ) ) {
@@ -1638,9 +1636,14 @@ function wp_ajax_upload_attachment() {
 	}
 
 	if ( ! $attachment = wp_prepare_attachment_for_js( $attachment_id ) )
-		wp_send_json_error();
+		wp_die();
 
-	wp_send_json_success( $attachment );
+	echo json_encode( array(
+		'success' => true,
+		'data'    => $attachment,
+	) );
+
+	wp_die();
 }
 
 function wp_ajax_image_editor() {
@@ -1671,22 +1674,33 @@ function wp_ajax_image_editor() {
 }
 
 function wp_ajax_set_post_thumbnail() {
+	$json = ! empty( $_REQUEST['json'] ); // New-style request
+
 	$post_ID = intval( $_POST['post_id'] );
-	if ( !current_user_can( 'edit_post', $post_ID ) )
+	if ( ! current_user_can( 'edit_post', $post_ID ) )
 		wp_die( -1 );
+
 	$thumbnail_id = intval( $_POST['thumbnail_id'] );
 
-	check_ajax_referer( "set_post_thumbnail-$post_ID" );
+	if ( $json )
+		check_ajax_referer( "update-post_$post_ID" );
+	else
+		check_ajax_referer( "set_post_thumbnail-$post_ID" );
 
 	if ( $thumbnail_id == '-1' ) {
-		if ( delete_post_thumbnail( $post_ID ) )
-			wp_die( _wp_post_thumbnail_html( null, $post_ID ) );
-		else
+		if ( delete_post_thumbnail( $post_ID ) ) {
+			$return = _wp_post_thumbnail_html( null, $post_ID );
+			$json ? wp_send_json_success( $return ) : wp_die( $return );
+		} else {
 			wp_die( 0 );
+		}
 	}
 
-	if ( set_post_thumbnail( $post_ID, $thumbnail_id ) )
-		wp_die( _wp_post_thumbnail_html( $thumbnail_id, $post_ID ) );
+	if ( set_post_thumbnail( $post_ID, $thumbnail_id ) ) {
+		$return = _wp_post_thumbnail_html( $thumbnail_id, $post_ID );
+		$json ? wp_send_json_success( $return ) : wp_die( $return );
+	}
+
 	wp_die( 0 );
 }
 
@@ -1798,7 +1812,13 @@ function wp_ajax_get_attachment() {
 	if ( ! $id = absint( $_REQUEST['id'] ) )
 		wp_send_json_error();
 
-	if ( ! current_user_can( 'read_post', $id ) )
+	if ( ! $post = get_post( $id ) )
+		wp_send_json_error();
+
+	if ( 'attachment' != $post->post_type )
+		wp_send_json_error();
+
+	if ( ! current_user_can( 'upload_files' ) )
 		wp_send_json_error();
 
 	if ( ! $attachment = wp_prepare_attachment_for_js( $id ) )
@@ -1813,6 +1833,9 @@ function wp_ajax_get_attachment() {
  * @since 3.5.0
  */
 function wp_ajax_query_attachments() {
+	if ( ! current_user_can( 'upload_files' ) )
+		wp_send_json_error();
+
 	$query = isset( $_REQUEST['query'] ) ? (array) $_REQUEST['query'] : array();
 	$query = array_intersect_key( $query, array_flip( array(
 		's', 'order', 'orderby', 'posts_per_page', 'paged', 'post_mime_type',
@@ -1844,7 +1867,7 @@ function wp_ajax_save_attachment() {
 	if ( ! $id = absint( $_REQUEST['id'] ) )
 		wp_send_json_error();
 
-	check_ajax_referer( 'save-attachment', 'nonce' );
+	check_ajax_referer( 'update-post_' . $id, 'nonce' );
 
 	if ( ! current_user_can( 'edit_post', $id ) )
 		wp_send_json_error();
@@ -1861,8 +1884,11 @@ function wp_ajax_save_attachment() {
 	if ( isset( $changes['caption'] ) )
 		$post['post_excerpt'] = $changes['caption'];
 
+	if ( isset( $changes['description'] ) )
+		$post['post_content'] = $changes['description'];
+
 	if ( isset( $changes['alt'] ) ) {
-		$alt = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
+		$alt = get_post_meta( $id, '_wp_attachment_image_alt', true );
 		$new_alt = stripslashes( $changes['alt'] );
 		if ( $alt != $new_alt ) {
 			$new_alt = wp_strip_all_tags( $new_alt, true );
@@ -1890,7 +1916,7 @@ function wp_ajax_save_attachment_compat() {
 		wp_send_json_error();
 	$attachment_data = $_REQUEST['attachments'][ $id ];
 
-	check_ajax_referer( 'save-attachment', 'nonce' );
+	check_ajax_referer( 'update-post_' . $id, 'nonce' );
 
 	if ( ! current_user_can( 'edit_post', $id ) )
 		wp_send_json_error();
@@ -1918,4 +1944,129 @@ function wp_ajax_save_attachment_compat() {
 		wp_send_json_error();
 
 	wp_send_json_success( $attachment );
+}
+
+function wp_ajax_save_attachment_order() {
+	if ( ! isset( $_REQUEST['post_id'] ) )
+		wp_send_json_error();
+
+	if ( ! $post_id = absint( $_REQUEST['post_id'] ) )
+		wp_send_json_error();
+
+	if ( empty( $_REQUEST['attachments'] ) )
+		wp_send_json_error();
+
+	check_ajax_referer( 'update-post_' . $post_id, 'nonce' );
+
+	$attachments = $_REQUEST['attachments'];
+
+	if ( ! current_user_can( 'edit_post', $post_id ) )
+		wp_send_json_error();
+
+	$post = get_post( $post_id, ARRAY_A );
+
+	foreach ( $attachments as $attachment_id => $menu_order ) {
+		if ( ! current_user_can( 'edit_post', $attachment_id ) )
+			continue;
+		if ( ! $attachment = get_post( $attachment_id ) )
+			continue;
+		if ( 'attachment' != $attachment->post_type )
+			continue;
+
+		wp_update_post( array( 'ID' => $attachment_id, 'menu_order' => $menu_order ) );
+	}
+
+	wp_send_json_success();
+}
+
+/**
+ * Generates the HTML to send an attachment to the editor.
+ * Backwards compatible with the media_send_to_editor filter and the chain
+ * of filters that follow.
+ *
+ * @since 3.5.0
+ */
+function wp_ajax_send_attachment_to_editor() {
+	check_ajax_referer( 'media-send-to-editor', 'nonce' );
+
+	$attachment = stripslashes_deep( $_POST['attachment'] );
+
+	$id = intval( $attachment['id'] );
+
+	if ( ! $post = get_post( $id ) )
+		wp_send_json_error();
+
+	if ( 'attachment' != $post->post_type )
+		wp_send_json_error();
+
+	if ( current_user_can( 'edit_post', $id ) ) {
+		// If this attachment is unattached, attach it. Primarily a back compat thing.
+		if ( 0 == $post->post_parent && $insert_into_post_id = intval( $_POST['post_id'] ) ) {
+			wp_update_post( array( 'ID' => $id, 'post_parent' => $insert_into_post_id ) );
+		}
+	}
+
+	$rel = $url = '';
+	$html = $title = isset( $attachment['post_title'] ) ? $attachment['post_title'] : '';
+	if ( ! empty( $attachment['url'] ) ) {
+		$url = $attachment['url'];
+		if ( strpos( $url, 'attachment_id') || get_attachment_link( $id ) == $url )
+			$rel = ' rel="attachment wp-att-' . $id . '"';
+		$html = '<a href="' . esc_url( $url ) . '"' . $rel . '>' . $html . '</a>';
+	}
+
+	remove_filter( 'media_send_to_editor', 'image_media_send_to_editor', 10, 3 );
+
+	if ( 'image' === substr( $post->post_mime_type, 0, 5 ) ) {
+		$align = isset( $attachment['align'] ) ? $attachment['align'] : 'none';
+		$size = isset( $attachment['image-size'] ) ? $attachment['image-size'] : 'medium';
+		$alt = isset( $attachment['image_alt'] ) ? $attachment['image_alt'] : '';
+		$caption = isset( $attachment['post_excerpt'] ) ? $attachment['post_excerpt'] : '';
+		$title = ''; // We no longer insert title tags into <img> tags, as they are redundant.
+		$html = get_image_send_to_editor( $id, $caption, $title, $align, $url, (bool) $rel, $size, $alt );
+	}
+
+	$html = apply_filters( 'media_send_to_editor', $html, $id, $attachment );
+
+	wp_send_json_success( $html );
+}
+
+/**
+ * Generates the HTML to send a non-image embed link to the editor.
+ *
+ * Backwards compatible with the following filters:
+ * - file_send_to_editor_url
+ * - audio_send_to_editor_url
+ * - video_send_to_editor_url
+ *
+ * @since 3.5.0
+ */
+function wp_ajax_send_link_to_editor() {
+	check_ajax_referer( 'media-send-to-editor', 'nonce' );
+
+	if ( ! $src = stripslashes( $_POST['src'] ) )
+		wp_send_json_error();
+
+	if ( ! strpos( $src, '://' ) )
+		$src = 'http://' . $src;
+
+	if ( ! $src = esc_url_raw( $src ) )
+		wp_send_json_error();
+
+	if ( ! $title = trim( stripslashes( $_POST['title'] ) ) )
+		$title = wp_basename( $src );
+
+	$html = '';
+	if ( $title )
+		$html = '<a href="' . esc_url( $src ) . '">' . $title . '</a>';
+
+	// Figure out what filter to run:
+	$type = 'file';
+	if ( ( $ext = preg_replace( '/^.+?\.([^.]+)$/', '$1', $src ) ) && ( $ext_type = wp_ext2type( $ext ) )
+		&& ( 'audio' == $ext_type || 'video' == $ext_type ) )
+			$type = $ext_type;
+
+	$html = apply_filters( $type . '_send_to_editor_url', $html, $src, $title );
+
+	wp_send_json_success( $html );
 }

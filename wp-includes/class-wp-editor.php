@@ -71,6 +71,8 @@ final class _WP_Editors {
 
 		if ( $set['editor_height'] < 50 )
 			$set['editor_height'] = 50;
+		elseif ( $set['editor_height'] > 5000 )
+			$set['editor_height'] = 5000;
 
 		return $set;
 	}
@@ -109,11 +111,11 @@ final class _WP_Editors {
 				$switch_class = 'tmce-active';
 			}
 
-			$buttons .= '<a id="' . $editor_id . '-html" class="hide-if-no-js wp-switch-editor switch-html" onclick="switchEditors.switchto(this);">' . __('Text') . "</a>\n";
-			$buttons .= '<a id="' . $editor_id . '-tmce" class="hide-if-no-js wp-switch-editor switch-tmce" onclick="switchEditors.switchto(this);">' . __('Visual') . "</a>\n";
+			$buttons .= '<a id="' . $editor_id . '-html" class="wp-switch-editor switch-html" onclick="switchEditors.switchto(this);">' . _x( 'Text', 'Name for the Text editor tab (formerly HTML)' ) . "</a>\n";
+			$buttons .= '<a id="' . $editor_id . '-tmce" class="wp-switch-editor switch-tmce" onclick="switchEditors.switchto(this);">' . __('Visual') . "</a>\n";
 		}
 
-		echo '<div id="wp-' . $editor_id . '-wrap" class="wp-editor-wrap ' . $switch_class . '">';
+		echo '<div id="wp-' . $editor_id . '-wrap" class="wp-core-ui wp-editor-wrap ' . $switch_class . '">';
 
 		if ( self::$editor_buttons_css ) {
 			wp_print_styles('editor-buttons');
@@ -124,7 +126,7 @@ final class _WP_Editors {
 			echo $set['editor_css'] . "\n";
 
 		if ( !empty($buttons) || $set['media_buttons'] ) {
-			echo '<div id="wp-' . $editor_id . '-editor-tools" class="wp-editor-tools">';
+			echo '<div id="wp-' . $editor_id . '-editor-tools" class="wp-editor-tools hide-if-no-js">';
 			echo $buttons;
 
 			if ( $set['media_buttons'] ) {
@@ -133,7 +135,7 @@ final class _WP_Editors {
 				if ( !function_exists('media_buttons') )
 					include(ABSPATH . 'wp-admin/includes/media.php');
 
-				echo '<div id="wp-' . $editor_id . '-media-buttons" class="hide-if-no-js wp-media-buttons">';
+				echo '<div id="wp-' . $editor_id . '-media-buttons" class="wp-media-buttons">';
 				do_action('media_buttons', $editor_id);
 				echo "</div>\n";
 			}
@@ -567,10 +569,12 @@ final class _WP_Editors {
 		$baseurl = self::$baseurl;
 
 		if ( $tmce_on ) {
-			if ( $compressed )
+			if ( $compressed ) {
 				echo "<script type='text/javascript' src='{$baseurl}/wp-tinymce.php?c=1&amp;$version'></script>\n";
-			else
+			} else {
 				echo "<script type='text/javascript' src='{$baseurl}/tiny_mce.js?$version'></script>\n";
+				echo "<script type='text/javascript' src='{$baseurl}/wp-tinymce-schema.js?$version'></script>\n";
+			}
 
 			if ( 'en' != self::$mce_locale && isset($lang) )
 				echo "<script type='text/javascript'>\n$lang\n</script>\n";

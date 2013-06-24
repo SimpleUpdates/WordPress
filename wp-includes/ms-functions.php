@@ -540,7 +540,9 @@ function wpmu_validate_user_signup($user_name, $user_email) {
  * @return array Contains the new site data and error messages.
  */
 function wpmu_validate_blog_signup($blogname, $blog_title, $user = '') {
-	global $wpdb, $domain, $base, $current_site;
+	global $wpdb, $domain, $current_site;
+
+	$base = $current_site->path;
 
 	$blog_title = strip_tags( $blog_title );
 	$blog_title = substr( $blog_title, 0, 50 );
@@ -1985,6 +1987,19 @@ function get_upload_space_available() {
 		return 0;
 
 	return $space_allowed - $space_used;
+}
+
+/**
+ * Determines if there is any upload space left in the current blog's quota.
+ *
+ * @since 3.0.0
+ * @return bool True if space is available, false otherwise.
+ */
+function is_upload_space_available() {
+	if ( get_site_option( 'upload_space_check_disabled' ) )
+		return true;
+
+	return (bool) get_upload_space_available();
 }
 
 /**

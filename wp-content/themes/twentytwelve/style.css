@@ -4,7 +4,7 @@ Theme URI: http://wordpress.org/extend/themes/twentytwelve
 Author: the WordPress team
 Author URI: http://wordpress.org/
 Description: The 2012 theme for WordPress is a fully responsive theme that looks great on any device. Features include a front page template with its own widgets, an optional display font, styling for post formats on both index and single views, and an optional no-sidebar page template. Make it yours with a custom menu, header image, and background.
-Version: 1.0
+Version: 1.1
 License: GNU General Public License v2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Tags: light, gray, white, one-column, two-columns, right-sidebar, flexible-width, custom-background, custom-header, custom-menu, editor-style, featured-images, flexible-header, full-width-template, microformats, post-formats, rtl-language-support, sticky-post, theme-options, translation-ready
@@ -202,9 +202,43 @@ article.format-status footer.entry-meta {
 	line-height: 2.181818182;
 }
 
+/* Form fields, general styles first */
+button,
+input,
+textarea {
+	border: 1px solid #ccc;
+	border-radius: 3px;
+	font-family: inherit;
+	padding: 6px;
+	padding: 0.428571429rem;
+}
+button,
+input {
+    line-height: normal;
+}
+textarea {
+	font-size: 100%;
+	overflow: auto;
+	vertical-align: top;
+}
+
+/* Reset non-text input types */
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+input[type="hidden"],
+input[type="image"],
+input[type="color"] {
+	border: 0;
+	border-radius: 0;
+	padding: 0;
+}
+
 /* Buttons */
 .menu-toggle,
 input[type="submit"],
+input[type="button"],
+input[type="reset"],
 article.post-password-required input[type=submit],
 li.bypostauthor cite span {
 	padding: 6px 10px;
@@ -226,12 +260,21 @@ li.bypostauthor cite span {
 	box-shadow: 0 1px 2px rgba(64, 64, 64, 0.1);
 }
 .menu-toggle,
+button,
 input[type="submit"],
-article.post-password-required input[type=submit] {
+input[type="button"],
+input[type="reset"] {
 	cursor: pointer;
 }
+button[disabled],
+input[disabled] {
+    cursor: default;
+}
 .menu-toggle:hover,
+button:hover,
 input[type="submit"]:hover,
+input[type="button"]:hover,
+input[type="reset"]:hover,
 article.post-password-required input[type=submit]:hover {
 	color: #5e5e5e;
 	background-color: #ebebeb;
@@ -244,9 +287,10 @@ article.post-password-required input[type=submit]:hover {
 }
 .menu-toggle:active,
 .menu-toggle.toggled-on,
+button:active,
 input[type="submit"]:active,
-article.post-password-required input[type=submit]:active,
-input[type="submit"].toggled-on {
+input[type="button"]:active,
+input[type="reset"]:active {
 	color: #757575;
 	background-color: #e1e1e1;
 	background-repeat: repeat-x;
@@ -266,19 +310,6 @@ li.bypostauthor cite span {
 	border-radius: 2px;
 	box-shadow: none;
 	padding: 0;
-}
-
-/* Form fields */
-input[type="text"],
-input[type="password"],
-input[type="email"],
-input[type="url"],
-textarea {
-	padding: 6px;
-	padding: 0.428571429rem;
-	font-family: inherit;
-	border: 1px solid #ccc;
-	border-radius: 3px;
 }
 
 /* Responsive images */
@@ -1223,10 +1254,6 @@ a.comment-edit-link:hover {
 	margin-bottom: 24px;
 	margin-bottom: 1.714285714rem;
 }
-.commentlist .children {
-	margin-left: 48px;
-	margin-left: 3.428571429rem;
-}
 
 /* Comment form */
 #respond {
@@ -1550,6 +1577,10 @@ img#wpstats {
 		float: none;
 		width: auto;
 	}
+	.commentlist .children {
+		margin-left: 48px;
+		margin-left: 3.428571429rem;
+	}
 }
 
 /* Minimum width of 960 pixels. */
@@ -1585,6 +1616,7 @@ img#wpstats {
 @media print {
 	body {
 		background: none !important;
+		color: #000;
 		font-size: 10pt;
 	}
 	footer a[rel=bookmark]:link:after,
@@ -1619,8 +1651,13 @@ img#wpstats {
 		text-align: left;
 	}
 	.site-header h2 {
+		color: #000;
 		font-size: 10pt;
 		text-align: left;
+	}
+	.site-header h1 a,
+	.site-header h2 a {
+		color: #000;
 	}
 	.author-avatar,
 	#colophon,

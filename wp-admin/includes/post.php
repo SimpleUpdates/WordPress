@@ -26,6 +26,20 @@ function _wp_translate_postdata( $update = false, $post_data = null ) {
 	if ( $update )
 		$post_data['ID'] = (int) $post_data['post_ID'];
 
+	$ptype = get_post_type_object( $post_data['post_type'] );
+
+	if ( $update && ! current_user_can( $ptype->cap->edit_post, $post_data['ID'] ) ) {
+		if ( 'page' == $post_data['post_type'] )
+			return new WP_Error( 'edit_others_pages', __( 'You are not allowed to edit pages as this user.' ) );
+		else
+			return new WP_Error( 'edit_others_posts', __( 'You are not allowed to edit posts as this user.' ) );
+	} elseif ( ! $update && ! current_user_can( $ptype->cap->create_posts ) ) {
+		if ( 'page' == $post_data['post_type'] )
+			return new WP_Error( 'edit_others_pages', __( 'You are not allowed to create pages as this user.' ) );
+		else
+			return new WP_Error( 'edit_others_posts', __( 'You are not allowed to create posts as this user.' ) );
+	}
+
 	if ( isset( $post_data['content'] ) )
 		$post_data['post_content'] = $post_data['content'];
 
@@ -51,22 +65,23 @@ function _wp_translate_postdata( $update = false, $post_data = null ) {
 		}
 	}
 
-	$ptype = get_post_type_object( $post_data['post_type'] );
-	if ( isset($post_data['user_ID']) && ($post_data['post_author'] != $post_data['user_ID']) ) {
-		if ( !current_user_can( $ptype->cap->edit_others_posts ) ) {
-			if ( 'page' == $post_data['post_type'] ) {
-				return new WP_Error( 'edit_others_pages', $update ?
-					__( 'You are not allowed to edit pages as this user.' ) :
-					__( 'You are not allowed to create pages as this user.' )
-				);
-			} else {
-				return new WP_Error( 'edit_others_posts', $update ?
-					__( 'You are not allowed to edit posts as this user.' ) :
-					__( 'You are not allowed to create posts as this user.' )
-				);
-			}
+	if ( isset( $post_data['user_ID'] ) && ( $post_data['post_author'] != $post_data['user_ID'] )
+		 && ! current_user_can( $ptype->cap->edit_others_posts ) ) {
+		if ( $update ) {
+			if ( 'page' == $post_data['post_type'] )
+				return new WP_Error( 'edit_others_pages', __( 'You are not allowed to edit pages as this user.' ) );
+			else
+				return new WP_Error( 'edit_others_posts', __( 'You are not allowed to edit posts as this user.' ) );
+		} else {
+			if ( 'page' == $post_data['post_type'] )
+				return new WP_Error( 'edit_others_pages', __( 'You are not allowed to create pages as this user.' ) );
+			else
+				return new WP_Error( 'edit_others_posts', __( 'You are not allowed to create posts as this user.' ) );
 		}
 	}
+
+	if ( ! empty( $post_data['post_status'] ) )
+		$post_data['post_status'] = sanitize_key( $post_data['post_status'] );
 
 	// What to do based on which button they pressed
 	if ( isset($post_data['saveasdraft']) && '' != $post_data['saveasdraft'] )
@@ -86,10 +101,12 @@ function _wp_translate_postdata( $update = false, $post_data = null ) {
 		$post_id = false;
 	$previous_status = $post_id ? get_post_field( 'post_status', $post_id ) : false;
 
+	$published_statuses = array( 'publish', 'future' );
+
 	// Posts 'submitted for approval' present are submitted to $_POST the same as if they were being published.
 	// Change status from 'publish' to 'pending' if user lacks permissions to publish or to resave published posts.
-	if ( isset($post_data['post_status']) && ('publish' == $post_data['post_status'] && !current_user_can( $ptype->cap->publish_posts )) )
-		if ( $previous_status != 'publish' || !current_user_can( 'edit_post', $post_id ) )
+	if ( isset($post_data['post_status']) && (in_array( $post_data['post_status'], $published_statuses ) && !current_user_can( $ptype->cap->publish_posts )) )
+		if ( ! in_array( $previous_status, $published_statuses ) || !current_user_can( 'edit_post', $post_id ) )
 			$post_data['post_status'] = 'pending';
 
 	if ( ! isset($post_data['post_status']) )
@@ -193,14 +210,6 @@ function edit_post( $post_data = null ) {
 			set_post_format( $post_ID, false );
 	}
 
-	// Featured Images
-	if ( isset( $post_data['thumbnail_id'] ) ) {
-		if ( '-1' == $post_data['thumbnail_id'] )
-			delete_post_thumbnail( $post_ID );
-		else
-			set_post_thumbnail( $post_ID, $post_data['thumbnail_id'] );
-	}
-
 	// Meta Stuff
 	if ( isset($post_data['meta']) && $post_data['meta'] ) {
 		foreach ( $post_data['meta'] as $key => $value ) {
@@ -227,13 +236,18 @@ function edit_post( $post_data = null ) {
 	}
 
 	// Attachment stuff
-	if ( 'attachment' == $post_data['post_type'] && isset( $post_data['_wp_attachment_image_alt'] ) ) {
-		$image_alt = get_post_meta( $post_ID, '_wp_attachment_image_alt', true );
-		if ( $image_alt != stripslashes( $post_data['_wp_attachment_image_alt'] ) ) {
-			$image_alt = wp_strip_all_tags( stripslashes( $post_data['_wp_attachment_image_alt'] ), true );
-			// update_meta expects slashed
-			update_post_meta( $post_ID, '_wp_attachment_image_alt', addslashes( $image_alt ) );
+	if ( 'attachment' == $post_data['post_type'] ) {
+		if ( isset( $post_data[ '_wp_attachment_image_alt' ] ) ) {
+			$image_alt = get_post_meta( $post_ID, '_wp_attachment_image_alt', true );
+			if ( $image_alt != stripslashes( $post_data['_wp_attachment_image_alt'] ) ) {
+				$image_alt = wp_strip_all_tags( stripslashes( $post_data['_wp_attachment_image_alt'] ), true );
+				// update_meta expects slashed
+				update_post_meta( $post_ID, '_wp_attachment_image_alt', addslashes( $image_alt ) );
+			}
 		}
+
+		$attachment_data = isset( $post_data['attachments'][ $post_ID ] ) ? $post_data['attachments'][ $post_ID ] : array();
+		$post_data = apply_filters( 'attachment_fields_to_save', $post_data, $attachment_data );
 	}
 
 	add_meta( $post_ID );
@@ -876,23 +890,6 @@ function wp_edit_posts_query( $q = false ) {
 }
 
 /**
- * Get default post mime types
- *
- * @since 2.9.0
- *
- * @return array
- */
-function get_post_mime_types() {
-	$post_mime_types = array(	//	array( adj, noun )
-		'image' => array(__('Images'), __('Manage Images'), _n_noop('Image <span class="count">(%s)</span>', 'Images <span class="count">(%s)</span>')),
-		'audio' => array(__('Audio'), __('Manage Audio'), _n_noop('Audio <span class="count">(%s)</span>', 'Audio <span class="count">(%s)</span>')),
-		'video' => array(__('Video'), __('Manage Video'), _n_noop('Video <span class="count">(%s)</span>', 'Video <span class="count">(%s)</span>')),
-	);
-
-	return apply_filters('post_mime_types', $post_mime_types);
-}
-
-/**
  * {@internal Missing Short Description}}
  *
  * @since 2.5.0
@@ -1055,19 +1052,13 @@ function get_sample_permalink($id, $title = null, $name = null) {
  * @param int|object $id Post ID or post object.
  * @param string $new_title Optional. New title.
  * @param string $new_slug Optional. New slug.
- * @param string|WP_Screen $screen Optional. Screen where the editor is being shown.
  * @return string The HTML of the sample permalink slug editor.
  */
-function get_sample_permalink_html( $id, $new_title = null, $new_slug = null, $screen = null ) {
+function get_sample_permalink_html( $id, $new_title = null, $new_slug = null ) {
 	global $wpdb;
 	$post = get_post($id);
 
 	list($permalink, $post_name) = get_sample_permalink($post->ID, $new_title, $new_slug);
-
-	if ( isset( $screen ) )
-		$screen = convert_to_screen( $screen );
-	else
-		$screen = get_current_screen();
 
 	if ( 'publish' == get_post_status( $post ) ) {
 		$ptype = get_post_type_object($post->post_type);
@@ -1078,12 +1069,10 @@ function get_sample_permalink_html( $id, $new_title = null, $new_slug = null, $s
 	}
 
 	if ( false === strpos($permalink, '%postname%') && false === strpos($permalink, '%pagename%') ) {
-		if ( 'options-reading' == $screen->id )
-			return '';
 		$return = '<strong>' . __('Permalink:') . "</strong>\n" . '<span id="sample-permalink" tabindex="-1">' . $permalink . "</span>\n";
 		if ( '' == get_option( 'permalink_structure' ) && current_user_can( 'manage_options' ) && !( 'page' == get_option('show_on_front') && $id == get_option('page_on_front') ) )
 			$return .= '<span id="change-permalinks"><a href="options-permalink.php" class="button button-small" target="_blank">' . __('Change Permalinks') . "</a></span>\n";
-		if ( isset($view_post) )
+		if ( isset( $view_post ) )
 			$return .= "<span id='view-post-btn'><a href='$permalink' class='button button-small'>$view_post</a></span>\n";
 
 		$return = apply_filters('get_sample_permalink_html', $return, $id, $new_title, $new_slug);
@@ -1108,12 +1097,12 @@ function get_sample_permalink_html( $id, $new_title = null, $new_slug = null, $s
 	$post_name_html = '<span id="editable-post-name" title="' . $title . '">' . $post_name_abridged . '</span>';
 	$display_link = str_replace(array('%pagename%','%postname%'), $post_name_html, $permalink);
 	$view_link = str_replace(array('%pagename%','%postname%'), $post_name, $permalink);
-	$return  = ( 'options-reading' == $screen->id ) ? __( 'Located at' ) . "\n" : '<strong>' . __( 'Permalink:' ) . "</strong>\n";
+	$return =  '<strong>' . __('Permalink:') . "</strong>\n";
 	$return .= '<span id="sample-permalink" tabindex="-1">' . $display_link . "</span>\n";
 	$return .= '&lrm;'; // Fix bi-directional text display defect in RTL languages.
 	$return .= '<span id="edit-slug-buttons"><a href="#post_name" class="edit-slug button button-small hide-if-no-js" onclick="editPermalink(' . $id . '); return false;">' . __('Edit') . "</a></span>\n";
 	$return .= '<span id="editable-post-name-full">' . $post_name . "</span>\n";
-	if ( isset( $view_post ) && 'options-reading' != $screen->id )
+	if ( isset($view_post) )
 		$return .= "<span id='view-post-btn'><a href='$view_link' class='button button-small'>$view_post</a></span>\n";
 
 	$return = apply_filters('get_sample_permalink_html', $return, $id, $new_title, $new_slug);
@@ -1329,118 +1318,3 @@ function post_preview() {
 
 	return $url;
 }
-
-/**
- * Creates new pages to be set as a front page or a page for posts in Reading Settings.
- *
- * @todo Make sure we are doing adequate sanitization on success, and cleanup/reset on failure.
- *
- * @since 3.5.0
- * @access private
- */
-function _show_on_front_reading_settings( $show_on_front_value ) {
-	// If we're not saving the Reading Settings screen, don't intercept.
-	if ( ! $_POST || ! strpos( wp_get_referer(), 'options-reading.php' ) )
-		return $show_on_front_value;
-
-	if ( 'posts' == $show_on_front_value ) {
-		update_option( 'page_on_front', 0 );
-		update_option( 'page_for_posts', 0 );
-		return $show_on_front_value;
-	}
-
-	// If a new front page was meant to be created, go forth and create it.
-	if ( 'new' == $_POST['page_on_front'] ) {
-
-		// If the user can't create pages, revert.
-		if ( ! current_user_can( 'create_posts', 'page' ) ) {
-			// If an existing page is set, keep things as is, rather than reverting to showing posts.
-			if ( get_option( 'page_on_front' ) ) {
-				$show_on_front_value = 'page';
-			} else {
-				$show_on_front_value = 'posts';
-				update_option( 'page_on_front', 0 );
-				update_option( 'page_for_posts', 0 );
-			}
-			add_settings_error( 'page_on_front', 'create_pages', __( 'You are not allowed to create pages on this site.' ) );
-			return $show_on_front_value;
-		}
-
-		$existing_page = get_page_by_title( stripslashes( $_POST['page_on_front_title'] ) );
-
-		// If page already exists and it's public, there's no need to create a new page.
-		if ( $existing_page && 'publish' == $existing_page->post_status ) {
-			$page_id = $existing_page->ID;
-		} else {
-			$page_id = wp_insert_post( array(
-				'post_title' => $_POST['page_on_front_title'],
-				'post_type' => 'page',
-				'post_status' => 'publish',
-				'comment_status' => 'closed',
-				'ping_status' => 'closed',
-				// @todo Create some sort of a 'context' in postmeta so we know we created a page through these means.
-				//       Consider then showing that context in the list table as a good-first-step.
-			) );
-		}
-
-		if ( $page_id ) {
-			update_option( 'page_on_front', $page_id );
-		// If we can't save it, revert.
-		} elseif ( get_option( 'page_on_front' ) ) {
-			// If an existing page is set, keep things as is, rather than reverting to showing posts.
-			$show_on_front_value = 'page';
-		} else {
-			$show_on_front_value = 'posts';
-			update_option( 'page_on_front', 0 );
-			update_option( 'page_for_posts', 0 );
-			return $show_on_front_value;
-		}
-	} elseif ( $_POST['page_on_front'] ) {
-		update_option( 'page_on_front', $_POST['page_on_front'] );
-	} else {
-		// They didn't select a page at all. Sad face.
-		$show_on_front_value = 'posts';
-		update_option( 'page_on_front', 0 );
-		update_option( 'page_for_posts', 0 );
-		add_settings_error( 'page_on_front', 'no_page_selected', __( 'You must select a page to set a static front page.' ) );
-		return $show_on_front_value;
-	}
-
-	// If a page for posts was meant to be specified, update/create it.
-	if ( ! isset( $_POST['page_for_posts'] ) ) {
-		update_option( 'page_for_posts', 0 );
-		return $show_on_front_value;
-	}
-
-	$page_for_posts = (int) $_POST['page_for_posts'];
-
-	if ( ! $page_for_posts || ! $page = get_post( $page_for_posts, ARRAY_A ) ) {
-		update_option( 'page_for_posts', 0 );
-		return $show_on_front_value;
-	}
-
-	if ( 'page' != $page['post_type'] || ! current_user_can( 'edit_post', $page_for_posts ) ) {
-		update_option( 'page_for_posts', 0 );
-		return $show_on_front_value;
-	}
-
-	if ( 'publish' != $page['post_status'] && ! current_user_can( 'publish_post', $page_for_posts ) ) {
-		update_option( 'page_for_posts', 0 );
-		return $show_on_front_value;
-	}
-
-	$args = add_magic_quotes( $page );
-	$args['post_title']  = $_POST['page_for_posts_title'];
-	$args['post_name']   = $_POST['post_name'];
-	$args['post_status'] = 'publish';
-	if ( 'auto-draft' == $page['post_status'] ) {
-		$args['comment_status'] = 'closed';
-		$args['ping_status'] = 'closed';
-	}
-
-	$page_id = wp_insert_post( $args );
-	update_option( 'page_for_posts', $page_id );
-
-	return $show_on_front_value;
-}
-add_filter( 'sanitize_option_show_on_front', '_show_on_front_reading_settings' );

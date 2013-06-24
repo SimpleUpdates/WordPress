@@ -218,7 +218,7 @@ if ( !in_array( $post->post_status, array('publish', 'future', 'private') ) || 0
 	endif;
 } else { ?>
 		<input name="original_publish" type="hidden" id="original_publish" value="<?php esc_attr_e('Update') ?>" />
-		<input name="save" type="submit" class="button-primary button-large" id="publish" accesskey="p" value="<?php esc_attr_e('Update') ?>" />
+		<input name="save" type="submit" class="button button-primary button-large" id="publish" accesskey="p" value="<?php esc_attr_e('Update') ?>" />
 <?php
 } ?>
 </div>
@@ -277,7 +277,7 @@ function attachment_submit_meta_box( $post ) {
 			echo "<a class='submitdelete deletion' href='" . get_delete_post_link( $post->ID ) . "'>" . __( 'Trash' ) . "</a>";
 		} else {
 			$delete_ays = ! MEDIA_TRASH ? " onclick='return showNotice.warn();'" : '';
-			echo  "<a class='submitdelete deletion'$delete_ays href='" . get_delete_post_link( $post->ID, null, true ) . "''>" . __( 'Delete Permanently' ) . "</a>";
+			echo  "<a class='submitdelete deletion'$delete_ays href='" . get_delete_post_link( $post->ID, null, true ) . "'>" . __( 'Delete Permanently' ) . "</a>";
 		}
 	?>
 	</div>
@@ -292,30 +292,6 @@ function attachment_submit_meta_box( $post ) {
 
 </div>
 
-<?php
-}
-
-/**
- * Display attachment/media-specific information
- *
- * @since 3.5.0
- *
- * @param object $post
- */
-function attachment_content_meta_box( $post ) {
-	$quicktags_settings = array( 'buttons' => 'strong,em,link,block,del,ins,img,ul,ol,li,code,spell,close' );
-	$editor_args = array(
-		'textarea_name' => 'content',
-		'textarea_rows' => 5,
-		'media_buttons' => false,
-		'tinymce' => false,
-		'quicktags' => $quicktags_settings,
-	);
-?>
-<p>
-	<label class="screen-reader-text" for="content"><strong><?php _e( 'Attachment Page Content' ); ?></strong></label>
-	<?php wp_editor( $post->post_content, 'attachment_content', $editor_args ); ?>
-</p>
 <?php
 }
 
@@ -1001,114 +977,6 @@ function link_advanced_meta_box($link) {
  * @since 2.9.0
  */
 function post_thumbnail_meta_box( $post ) {
-	global $_wp_additional_image_sizes;
-
-	?><script type="text/javascript">
-	jQuery( function($) {
-		var $element     = $('#select-featured-image'),
-			$thumbnailId = $element.find('input[name="thumbnail_id"]'),
-			title        = '<?php _e( "Choose a Featured Image" ); ?>',
-			update       = '<?php _e( "Update Featured Image" ); ?>',
-			Attachment   = wp.media.model.Attachment,
-			frame, setFeaturedImage;
-
-		setFeaturedImage = function( thumbnailId ) {
-			var selection;
-
-			$element.find('img').remove();
-			$element.toggleClass( 'has-featured-image', -1 != thumbnailId );
-			$thumbnailId.val( thumbnailId );
-
-			if ( frame ) {
-				selection = frame.get('library').get('selection');
-
-				if ( -1 === thumbnailId )
-					selection.clear();
-				else
-					selection.add( Attachment.get( thumbnailId ) );
-			}
-		};
-
-		$element.on( 'click', '.choose, img', function( event ) {
-			var options, thumbnailId;
-
-			event.preventDefault();
-
-			if ( frame ) {
-				frame.open();
-				return;
-			}
-
-			options = {
-				title:   title,
-				library: {
-					type: 'image'
-				}
-			};
-
-			thumbnailId = $thumbnailId.val();
-			if ( '' !== thumbnailId && -1 !== thumbnailId )
-				options.selection = [ Attachment.get( thumbnailId ) ];
-
-			frame = wp.media( options );
-
-			frame.toolbar.on( 'activate:select', function() {
-				frame.toolbar.view().set({
-					select: {
-						style: 'primary',
-						text:  update,
-
-						click: function() {
-							var selection = frame.state().get('selection'),
-								model = selection.first(),
-								sizes = model.get('sizes'),
-								size;
-
-							setFeaturedImage( model.id );
-
-							// @todo: might need a size hierarchy equivalent.
-							if ( sizes )
-								size = sizes['post-thumbnail'] || sizes.medium;
-
-							// @todo: Need a better way of accessing full size
-							// data besides just calling toJSON().
-							size = size || model.toJSON();
-
-							frame.close();
-
-							$( '<img />', {
-								src:    size.url,
-								width:  size.width
-							}).prependTo( $element );
-						}
-					}
-				});
-			});
-
-			frame.toolbar.mode('select');
-		});
-
-		$element.on( 'click', '.remove', function( event ) {
-			event.preventDefault();
-			setFeaturedImage( -1 );
-		});
-	});
-	</script>
-
-	<?php
-	$thumbnail_id   = get_post_meta( $post->ID, '_thumbnail_id', true );
-	$thumbnail_size = isset( $_wp_additional_image_sizes['post-thumbnail'] ) ? 'post-thumbnail' : 'medium';
-	$thumbnail_html = wp_get_attachment_image( $thumbnail_id, $thumbnail_size );
-
-	$classes = empty( $thumbnail_id ) ? '' : 'has-featured-image';
-
-	?><div id="select-featured-image"
-		class="<?php echo esc_attr( $classes ); ?>"
-		data-post-id="<?php echo esc_attr( $post->ID ); ?>">
-		<?php echo $thumbnail_html; ?>
-		<input type="hidden" name="thumbnail_id" value="<?php echo esc_attr( $thumbnail_id ); ?>" />
-		<a href="#" class="choose button-secondary"><?php _e( 'Choose a Featured Image' ); ?></a>
-		<a href="#" class="remove"><?php _e( 'Remove Featured Image' ); ?></a>
-	</div>
-	<?php
+	$thumbnail_id = get_post_meta( $post->ID, '_thumbnail_id', true );
+	echo _wp_post_thumbnail_html( $thumbnail_id, $post->ID );
 }

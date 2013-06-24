@@ -6,8 +6,6 @@
 	var DOM = tinymce.DOM;
 
 	tinymce.create('tinymce.plugins.WordPress', {
-		mceTout : 0,
-
 		init : function(ed, url) {
 			var t = this, tbId = ed.getParam('wordpress_adv_toolbar', 'toolbar2'), last = 0, moreHTML, nextpageHTML, closeOnClick, mod_key;
 			moreHTML = '<img src="' + url + '/img/trans.gif" class="mceWPmore mceItemNoResize" title="'+ed.getLang('wordpress.wp_more_alt')+'" />';
@@ -65,15 +63,8 @@
 			});
 
 			ed.addCommand('WP_Medialib', function() {
-				var id = ed.getParam('wp_fullscreen_editor_id') || ed.getParam('fullscreen_editor_id') || ed.id,
-					link = tinymce.DOM.select('#wp-' + id + '-media-buttons a.thickbox');
-
-				if ( link && link[0] )
-					link = link[0];
-				else
-					return;
-
-				tb_show('', link.href);
+				if ( typeof wp !== 'undefined' && wp.media && wp.media.editor )
+					wp.media.editor.open( ed.id );
 			});
 
 			// Register buttons
@@ -142,22 +133,6 @@
 						}
 					}
 				}
-			});
-
-			// Add obsolete HTML attributes that are still in use.
-			ed.onPreInit.add(function(ed) {
-				// The commonAttr are from TinyMCE 3.5.7 getHTML5()
-				// Obsolete attributes are from TinyMCE 3.5.7 getHTML4()
-				var commonAttr = 'id|accesskey|class|dir|draggable|item|hidden|itemprop|role|spellcheck|style|subject|title|onclick|ondblclick|onmousedown|onmouseup|onmouseover|onmousemove|onmouseout|onkeypress|onkeydown|onkeyup',
-					tdAttr = commonAttr + '|abbr|axis|headers|scope|rowspan|colspan|char|charoff|align|valign|halign|nowrap|bgcolor|width|height';
-				// Obsolete table attributes
-				ed.schema.addValidElements('table['+commonAttr+'|summary|width|border|frame|rules|cellspacing|cellpadding|align|bgcolor]');
-				// Obsolete tr attributes
-				ed.schema.addValidElements('tr['+commonAttr+'|align|char|charoff|valign|halign|bgcolor]');
-				// Obsolete td and th attributes
-				ed.schema.addValidElements('td['+tdAttr+'],th['+tdAttr+']');
-				// Adds "name" for <a>
-				ed.schema.addValidElements('a['+commonAttr+'|href|target|ping|rel|media|type|name]');
 			});
 
 			ed.onInit.add(function(ed) {
@@ -316,6 +291,11 @@
 					ed.plugins.wordpress._hideButtons();
 			});
 
+			ed.onKeyDown.add(function(ed, e){
+				if ( e.which == tinymce.VK.DELETE || e.which == tinymce.VK.BACKSPACE )
+					ed.plugins.wordpress._hideButtons();
+			});
+
 			closeOnClick = function(e){
 				var id;
 
@@ -374,25 +354,11 @@
 				'left' : X+5+'px',
 				'display' : 'block'
 			});
-
-			if ( this.mceTout )
-				clearTimeout(this.mceTout);
-
-			this.mceTout = setTimeout( function(){ed.plugins.wordpress._hideButtons();}, 5000 );
 		},
 
 		_hideButtons : function() {
-			if ( !this.mceTout )
-				return;
-
-			if ( document.getElementById('wp_editbtns') )
-				tinymce.DOM.hide('wp_editbtns');
-
-			if ( document.getElementById('wp_gallerybtns') )
-				tinymce.DOM.hide('wp_gallerybtns');
-
-			clearTimeout(this.mceTout);
-			this.mceTout = 0;
+			var DOM = tinymce.DOM;
+			DOM.hide( DOM.select('#wp_editbtns, #wp_gallerybtns') );
 		},
 
 		// Resizes the iframe by a relative height value

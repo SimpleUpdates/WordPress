@@ -1060,14 +1060,6 @@ function map_meta_cap( $cap, $user_id ) {
 				$caps[] = $post_type->cap->delete_private_posts;
 		}
 		break;
-	// current_user_can( 'create_posts', $post_type )
-	case 'create_posts':
-		$post_type = isset( $args[0] ) ? $args[0] : 'post';
-		$post_type_object = get_post_type_object( $post_type );
-
-		$caps[] = $post_type_object->cap->create_posts;
-
-		break;
 		// edit_post breaks down to edit_posts, edit_published_posts, or
 		// edit_others_posts
 	case 'edit_post':
@@ -1307,7 +1299,8 @@ function current_user_can( $capability ) {
  * @return bool
  */
 function current_user_can_for_blog( $blog_id, $capability ) {
-	switch_to_blog( $blog_id );
+	if ( is_multisite() )
+		switch_to_blog( $blog_id );
 
 	$current_user = wp_get_current_user();
 
@@ -1319,7 +1312,8 @@ function current_user_can_for_blog( $blog_id, $capability ) {
 
 	$can = call_user_func_array( array( $current_user, 'has_cap' ), $args );
 
-	restore_current_blog();
+	if ( is_multisite() )
+		restore_current_blog();
 
 	return $can;
 }

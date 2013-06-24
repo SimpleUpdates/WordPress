@@ -165,9 +165,11 @@ tagBox = {
 
 		// tag cloud
 		$('a.tagcloud-link').click(function(){
-			if ( ! $('.the-tagcloud').length )
-				tagBox.get( $(this).attr('id') );
-			$(this).siblings('.the-tagcloud').toggle();
+			tagBox.get( $(this).attr('id') );
+			$(this).unbind().click(function(){
+				$(this).siblings('.the-tagcloud').toggle();
+				return false;
+			});
 			return false;
 		});
 	}
@@ -572,6 +574,71 @@ jQuery(document).ready( function($) {
 		});
 	} // end submitdiv
 
+	// permalink
+	if ( $('#edit-slug-box').length ) {
+		editPermalink = function(post_id) {
+			var i, c = 0, e = $('#editable-post-name'), revert_e = e.html(), real_slug = $('#post_name'), revert_slug = real_slug.val(), b = $('#edit-slug-buttons'), revert_b = b.html(), full = $('#editable-post-name-full').html();
+
+			$('#view-post-btn').hide();
+			b.html('<a href="#" class="save button button-small">'+postL10n.ok+'</a> <a class="cancel" href="#">'+postL10n.cancel+'</a>');
+			b.children('.save').click(function() {
+				var new_slug = e.children('input').val();
+				if ( new_slug == $('#editable-post-name-full').text() ) {
+					return $('.cancel', '#edit-slug-buttons').click();
+				}
+				$.post(ajaxurl, {
+					action: 'sample-permalink',
+					post_id: post_id,
+					new_slug: new_slug,
+					new_title: $('#title').val(),
+					samplepermalinknonce: $('#samplepermalinknonce').val()
+				}, function(data) {
+					$('#edit-slug-box').html(data);
+					b.html(revert_b);
+					real_slug.val(new_slug);
+					makeSlugeditClickable();
+					$('#view-post-btn').show();
+				});
+				return false;
+			});
+
+			$('.cancel', '#edit-slug-buttons').click(function() {
+				$('#view-post-btn').show();
+				e.html(revert_e);
+				b.html(revert_b);
+				real_slug.val(revert_slug);
+				return false;
+			});
+
+			for ( i = 0; i < full.length; ++i ) {
+				if ( '%' == full.charAt(i) )
+					c++;
+			}
+
+			slug_value = ( c > full.length / 4 ) ? '' : full;
+			e.html('<input type="text" id="new-post-slug" value="'+slug_value+'" />').children('input').keypress(function(e){
+				var key = e.keyCode || 0;
+				// on enter, just save the new slug, don't save the post
+				if ( 13 == key ) {
+					b.children('.save').click();
+					return false;
+				}
+				if ( 27 == key ) {
+					b.children('.cancel').click();
+					return false;
+				}
+				real_slug.val(this.value);
+			}).focus();
+		}
+
+		makeSlugeditClickable = function() {
+			$('#editable-post-name').click(function() {
+				$('#edit-slug-buttons').children('.edit-slug').click();
+			});
+		}
+		makeSlugeditClickable();
+	}
+
 	// word count
 	if ( typeof(wpWordCount) != 'undefined' ) {
 		$(document).triggerHandler('wpcountwords', [ co.val() ]);
@@ -620,7 +687,7 @@ jQuery(document).ready( function($) {
 	(function() {
 		var textarea = $('textarea#content'), offset = null, el;
 		// No point for touch devices
-		if ( 'ontouchstart' in window )
+		if ( !textarea.length || 'ontouchstart' in window )
 			return;
 
 		function dragging(e) {
@@ -629,15 +696,16 @@ jQuery(document).ready( function($) {
 		}
 
 		function endDrag(e) {
-			var height = $('#wp-content-editor-container').height();
+			var height;
 
 			textarea.focus();
 			$(document).unbind('mousemove', dragging).unbind('mouseup', endDrag);
 
-			if ( height > 83 ) {
-				height -= 33; // compensate for toolbars, padding...
+			height = parseInt( textarea.css('height'), 10 );
+
+			// sanity check
+			if ( height && height > 50 && height < 5000 )
 				setUserSetting( 'ed_size', height );
-			}
 		}
 
 		textarea.css('resize', 'none');
@@ -657,43 +725,67 @@ jQuery(document).ready( function($) {
 			if ( ed.id != 'content' || tinymce.isIOS5 )
 				return;
 
-			// resize TinyMCE to match the textarea height when switching Text -> Visual
-			ed.onLoadContent.add( function(ed, o) {
-				var ifr_height, height = parseInt( $('#content').css('height'), 10 ),
+			function getHeight() {
+				var height, node = document.getElementById('content_ifr'),
+					ifr_height = node ? parseInt( node.style.height, 10 ) : 0,
 					tb_height = $('#content_tbl tr.mceFirst').height();
 
-				if ( height && !isNaN(height) && tb_height ) {
-					ifr_height = (height - tb_height) + 12; // compensate for padding in the textarea
+				if ( !ifr_height || !tb_height )
+					return false;
 
+				// total height including toolbar and statusbar
+				height = ifr_height + tb_height + 21;
+				// textarea height = total height - 33px toolbar
+				height -= 33;
+
+				return height;
+			}
+
+			// resize TinyMCE to match the textarea height when switching Text -> Visual
+			ed.onLoadContent.add( function(ed, o) {
+				var ifr_height, node = document.getElementById('content'),
+					height = node ? parseInt( node.style.height, 10 ) : 0,
+					tb_height = $('#content_tbl tr.mceFirst').height() || 33;
+
+				// height cannot be under 50 or over 5000
+				if ( !height || height < 50 || height > 5000 )
+					height = 360; // default height for the main editor
+
+				if ( getUserSetting( 'ed_size' ) > 5000  )
+					setUserSetting( 'ed_size', 360 );
+
+				// compensate for padding and toolbars
+				ifr_height = ( height - tb_height ) + 12;
+
+				// sanity check
+				if ( ifr_height > 50 && ifr_height < 5000 ) {
 					$('#content_tbl').css('height', '' );
 					$('#content_ifr').css('height', ifr_height + 'px' );
-					setUserSetting( 'ed_size', height );
 				}
 			});
 
 			// resize the textarea to match TinyMCE's height when switching Visual -> Text
 			ed.onSaveContent.add( function(ed, o) {
-				var height = $('#content_tbl').height();
+				var height = getHeight();
 
-				if ( height && height > 83 ) {
-					height -= 33;
+				if ( !height || height < 50 || height > 5000 )
+					return;
 
-					$('#content').css( 'height', height + 'px' );
-					setUserSetting( 'ed_size', height );
-				}
+				$('textarea#content').css( 'height', height + 'px' );
 			});
 
 			// save on resizing TinyMCE
 			ed.onPostRender.add(function() {
 				$('#content_resize').on('mousedown.wp-mce-resize', function(e){
 					$(document).on('mouseup.wp-mce-resize', function(e){
-						var height = $('#wp-content-editor-container').height();
-
-						height -= 33;
-						if ( height > 50 && height != getUserSetting( 'ed_size' ) )
-							setUserSetting( 'ed_size', height );
+						var height;
 
 						$(document).off('mouseup.wp-mce-resize');
+
+						height = getHeight();
+						// sanity check
+						if ( height && height > 50 && height < 5000 )
+							setUserSetting( 'ed_size', height );
 					});
 				});
 			});

@@ -40,14 +40,14 @@ function wp_image_editor($post_id, $msg = false) {
 		<div onclick="imageEdit.crop(<?php echo "$post_id, '$nonce'"; ?>, this)" class="imgedit-crop disabled" title="<?php esc_attr_e( 'Crop' ); ?>"></div><?php
 
 	// On some setups GD library does not provide imagerotate() - Ticket #11536
-	if ( function_exists('imagerotate') ) { ?>
+	if ( wp_image_editor_supports( array( 'mime_type' => get_post_mime_type( $post_id ), 'methods' => array( 'rotate' ) ) ) ) { ?>
 		<div class="imgedit-rleft"  onclick="imageEdit.rotate( 90, <?php echo "$post_id, '$nonce'"; ?>, this)" title="<?php esc_attr_e( 'Rotate counter-clockwise' ); ?>"></div>
 		<div class="imgedit-rright" onclick="imageEdit.rotate(-90, <?php echo "$post_id, '$nonce'"; ?>, this)" title="<?php esc_attr_e( 'Rotate clockwise' ); ?>"></div>
 <?php } else {
-		$note_gdlib = esc_attr__('Image rotation is not supported by your web host (function imagerotate() is missing)');
+		$note_no_rotate = esc_attr__('Image rotation is not supported by your web host.');
 ?>
-	    <div class="imgedit-rleft disabled"  title="<?php echo $note_gdlib; ?>"></div>
-	    <div class="imgedit-rright disabled" title="<?php echo $note_gdlib; ?>"></div>
+	    <div class="imgedit-rleft disabled"  title="<?php echo $note_no_rotate; ?>"></div>
+	    <div class="imgedit-rright disabled" title="<?php echo $note_no_rotate; ?>"></div>
 <?php } ?>
 
 		<div onclick="imageEdit.flip(1, <?php echo "$post_id, '$nonce'"; ?>, this)" class="imgedit-flipv" title="<?php esc_attr_e( 'Flip vertically' ); ?>"></div>
@@ -118,14 +118,6 @@ function wp_image_editor($post_id, $msg = false) {
 		<a class="imgedit-help-toggle" onclick="imageEdit.toggleHelp(this);return false;" href="#"><?php _e('(help)'); ?></a>
 		<div class="imgedit-help">
 		<p><?php _e('The image can be cropped by clicking on it and dragging to select the desired part. While dragging the dimensions of the selection are displayed below.'); ?></p>
-		<strong><?php _e('Keyboard Shortcuts'); ?></strong>
-		<ul>
-		<li><?php _e('Arrow: move by 10px'); ?></li>
-		<li><?php _e('Shift + arrow: move by 1px'); ?></li>
-		<li><?php _e('Ctrl + arrow: resize by 10px'); ?></li>
-		<li><?php _e('Ctrl + Shift + arrow: resize by 1px'); ?></li>
-		<li><?php _e('Shift + drag: lock aspect ratio'); ?></li>
-		</ul>
 
 		<p><strong><?php _e('Crop Aspect Ratio'); ?></strong><br />
 		<?php _e('You can specify the crop selection aspect ratio then hold down the Shift key while dragging to lock it. The values can be 1:1 (square), 4:3, 16:9, etc. If there is a selection, specifying aspect ratio will set it immediately.'); ?></p>
@@ -191,7 +183,7 @@ function wp_image_editor($post_id, $msg = false) {
 	</td></tr>
 	</tbody></table>
 	<div class="imgedit-wait" id="imgedit-wait-<?php echo $post_id; ?>"></div>
-	<script type="text/javascript">imageEdit.init(<?php echo $post_id; ?>);</script>
+	<script type="text/javascript">jQuery( function() { imageEdit.init(<?php echo $post_id; ?>); });</script>
 	<div class="hidden" id="imgedit-leaving-<?php echo $post_id; ?>"><?php _e("There are unsaved changes that will be lost. 'OK' to continue, 'Cancel' to return to the Image Editor."); ?></div>
 	</div>
 <?php
@@ -457,7 +449,7 @@ function stream_preview_image( $post_id ) {
 	$post = get_post( $post_id );
 	@ini_set( 'memory_limit', apply_filters( 'admin_memory_limit', WP_MAX_MEMORY_LIMIT ) );
 
-	$img = WP_Image_Editor::get_instance( _load_image_to_edit_path( $post_id ) );
+	$img = wp_get_image_editor( _load_image_to_edit_path( $post_id ) );
 
     if ( is_wp_error( $img ) )
         return false;
@@ -566,7 +558,7 @@ function wp_save_image( $post_id ) {
 	$success = $delete = $scaled = $nocrop = false;
 	$post = get_post( $post_id );
 
-	$img = WP_Image_Editor::get_instance( _load_image_to_edit_path( $post_id, 'full' ) );
+	$img = wp_get_image_editor( _load_image_to_edit_path( $post_id, 'full' ) );
 	if ( is_wp_error( $img ) ) {
 		$return->error = esc_js( __('Unable to create new image.') );
 		return $return;
@@ -700,7 +692,7 @@ function wp_save_image( $post_id ) {
 			$_sizes[ $size ] = array( 'width' => get_option("{$size}_size_w"), 'height' => get_option("{$size}_size_h"), 'crop' => $crop );
 		}
 
-		$meta['sizes'] = $img->multi_resize( $_sizes );
+		$meta['sizes'] = array_merge( $meta['sizes'], $img->multi_resize( $_sizes ) );
 	}
 
 	unset( $img );
@@ -710,11 +702,17 @@ function wp_save_image( $post_id ) {
 		update_post_meta( $post_id, '_wp_attachment_backup_sizes', $backup_sizes);
 
 		if ( $target == 'thumbnail' || $target == 'all' || $target == 'full' ) {
-			$file_url = wp_get_attachment_url($post_id);
-			if ( $thumb = $meta['sizes']['thumbnail'] )
-				$return->thumbnail = path_join( dirname($file_url), $thumb['file'] );
-			else
-				$return->thumbnail = "$file_url?w=128&h=128";
+			// Check if it's an image edit from attachment edit screen
+			if ( ! empty( $_REQUEST['context'] ) && 'edit-attachment' == $_REQUEST['context'] ) {
+				$thumb_url = wp_get_attachment_image_src( $post_id, array( 900, 600 ), true );
+				$return->thumbnail = $thumb_url[0];
+			} else {
+				$file_url = wp_get_attachment_url($post_id);
+				if ( $thumb = $meta['sizes']['thumbnail'] )
+					$return->thumbnail = path_join( dirname($file_url), $thumb['file'] );
+				else
+					$return->thumbnail = "$file_url?w=128&h=128";
+			}
 		}
 	} else {
 		$delete = true;

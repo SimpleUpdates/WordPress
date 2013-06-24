@@ -63,6 +63,9 @@ function create_initial_post_types() {
 		'_builtin' => true, /* internal use only. don't use this when registering your own post type. */
 		'_edit_link' => 'post.php?post=%d', /* internal use only. don't use this when registering your own post type. */
 		'capability_type' => 'post',
+		'capabilities' => array(
+			'create_posts' => 'upload_files',
+		),
 		'map_meta_cap' => true,
 		'hierarchical' => false,
 		'rewrite' => false,
@@ -615,16 +618,20 @@ final class WP_Post {
 		}
 
 		if ( 'post_category' == $key ) {
-			$terms = get_the_terms( $this, 'category' );
-			if ( ! $terms )
+			if ( is_object_in_taxonomy( $this->post_type, 'category' ) )
+				$terms = get_the_terms( $this, 'category' );
+
+			if ( empty( $terms ) )
 				return array();
 
 			return wp_list_pluck( $terms, 'term_id' );
 		}
 
 		if ( 'tags_input' == $key ) {
-			$terms = get_the_terms( $this, 'post_tag' );
-			if ( ! $terms )
+			if ( is_object_in_taxonomy( $this->post_type, 'post_tag' ) )
+				$terms = get_the_terms( $this, 'post_tag' );
+
+			if ( empty( $terms ) )
 				return array();
 
 			return wp_list_pluck( $terms, 'name' );
@@ -674,12 +681,9 @@ final class WP_Post {
  * @return array Ancestor IDs or empty array if none are found.
  */
 function get_post_ancestors( $post ) {
-	if ( ! $post )
-		return false;
-
 	$post = get_post( $post );
 
-	if ( empty( $post->post_parent ) || $post->post_parent == $post->ID )
+	if ( ! $post || empty( $post->post_parent ) || $post->post_parent == $post->ID )
 		return array();
 
 	$ancestors = array();
@@ -2176,6 +2180,23 @@ function wp_count_attachments( $mime_type = '' ) {
 }
 
 /**
+ * Get default post mime types
+ *
+ * @since 2.9.0
+ *
+ * @return array
+ */
+function get_post_mime_types() {
+	$post_mime_types = array(	//	array( adj, noun )
+		'image' => array(__('Images'), __('Manage Images'), _n_noop('Image <span class="count">(%s)</span>', 'Images <span class="count">(%s)</span>')),
+		'audio' => array(__('Audio'), __('Manage Audio'), _n_noop('Audio <span class="count">(%s)</span>', 'Audio <span class="count">(%s)</span>')),
+		'video' => array(__('Video'), __('Manage Video'), _n_noop('Video <span class="count">(%s)</span>', 'Video <span class="count">(%s)</span>')),
+	);
+
+	return apply_filters('post_mime_types', $post_mime_types);
+}
+
+/**
  * Check a MIME-Type against a list.
  *
  * If the wildcard_mime_types parameter is a string, it must be comma separated
@@ -2986,18 +3007,31 @@ function wp_update_post( $postarr = array(), $wp_error = false ) {
  * Publish a post by transitioning the post status.
  *
  * @since 2.1.0
- * @uses wp_update_post()
+ * @uses $wpdb
+ * @uses do_action() Calls 'edit_post', 'save_post', and 'wp_insert_post' on post_id and post data.
  *
  * @param mixed $post Post ID or object.
  */
 function wp_publish_post( $post ) {
+	global $wpdb;
+
 	if ( ! $post = get_post( $post ) )
 		return;
+
 	if ( 'publish' == $post->post_status )
 		return;
 
+	$wpdb->update( $wpdb->posts, array( 'post_status' => 'publish' ), array( 'ID' => $post->ID ) );
+
+	clean_post_cache( $post->ID );
+
+	$old_status = $post->post_status;
 	$post->post_status = 'publish';
-	wp_update_post( $post );
+	wp_transition_post_status( 'publish', $old_status, $post );
+
+	do_action( 'edit_post', $post->ID, $post );
+	do_action( 'save_post', $post->ID, $post );
+	do_action( 'wp_insert_post', $post->ID, $post );
 }
 
 /**
@@ -3175,13 +3209,7 @@ function wp_set_post_terms( $post_id = 0, $tags = '', $taxonomy = 'post_tag', $a
 		$tags = array_unique( array_map( 'intval', $tags ) );
 	}
 
-	$r = wp_set_object_terms( $post_id, $tags, $taxonomy, $append );
-	if ( is_wp_error( $r ) )
-		return $r;
-
-	wp_cache_delete( $post_id, $taxonomy . '_relationships' );
-
-	return $r;
+	return wp_set_object_terms( $post_id, $tags, $taxonomy, $append );
 }
 
 /**
@@ -3563,8 +3591,8 @@ function _page_traverse_name( $page_id, &$children, &$result ){
  * @return string Page URI.
  */
 function get_page_uri($page) {
-	if ( ! is_object($page) )
-		$page = get_post( $page );
+	$page = get_post( $page );
+
 	$uri = $page->post_name;
 
 	foreach ( $page->ancestors as $parent ) {
@@ -4338,7 +4366,7 @@ function wp_mime_type_icon( $mime = 0 ) {
 					closedir($dh);
 				}
 			}
-			wp_cache_set('icon_files', $icon_files, 600);
+			wp_cache_add( 'icon_files', $icon_files, 'default', 600 );
 		}
 
 		// Icon basename - extension = MIME wildcard
@@ -4901,6 +4929,9 @@ function wp_save_post_revision( $post_id ) {
 		return;
 
 	if ( !$post = get_post( $post_id, ARRAY_A ) )
+		return;
+
+	if ( 'auto-draft' == $post['post_status'] )
 		return;
 
 	if ( !post_type_supports($post['post_type'], 'revisions') )

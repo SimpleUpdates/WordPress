@@ -1189,7 +1189,7 @@ function upgrade_340() {
 function upgrade_350() {
 	global $wp_current_db_version, $wpdb;
 
-	if ( $wp_current_db_version < 21501 && $wpdb->get_var( "SELECT link_id FROM $wpdb->links LIMIT 1" ) )
+	if ( $wp_current_db_version < 22006 && $wpdb->get_var( "SELECT link_id FROM $wpdb->links LIMIT 1" ) )
 		update_option( 'link_manager_enabled', 1 ); // Previously set to 0 by populate_options()
 
 	if ( $wp_current_db_version < 21811 && is_main_site() && ! defined( 'DO_NOT_UPGRADE_GLOBAL_TABLES' ) ) {
@@ -1277,6 +1277,16 @@ function upgrade_network() {
 	// 3.5
 	if ( $wp_current_db_version < 21823 )
 		update_site_option( 'ms_files_rewriting', '1' );
+
+	// 3.5.2
+	if ( $wp_current_db_version < 22442 ) {
+		$illegal_names = get_site_option( 'illegal_names' );
+		if ( is_array( $illegal_names ) && count( $illegal_names ) === 1 ) {
+			$illegal_name = reset( $illegal_names );
+			$illegal_names = explode( ' ', $illegal_name );
+			update_site_option( 'illegal_names', $illegal_names );
+		}
+	}
 }
 
 // The functions we use to actually do stuff
@@ -1948,7 +1958,7 @@ function maybe_disable_automattic_widgets() {
 function maybe_disable_link_manager() {
 	global $wp_current_db_version, $wpdb;
 
-	if ( $wp_current_db_version >= 21501 && get_option( 'link_manager_enabled' ) && ! $wpdb->get_var( "SELECT link_id FROM $wpdb->links LIMIT 1" ) )
+	if ( $wp_current_db_version >= 22006 && get_option( 'link_manager_enabled' ) && ! $wpdb->get_var( "SELECT link_id FROM $wpdb->links LIMIT 1" ) )
 		update_option( 'link_manager_enabled', 0 );
 }
 

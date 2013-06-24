@@ -108,7 +108,7 @@ class WP_oEmbed {
 		$providers = array();
 
 		// Fetch URL content
-		if ( $html = wp_remote_retrieve_body( wp_remote_get( $url ) ) ) {
+		if ( $html = wp_remote_retrieve_body( wp_remote_get( $url, array( 'reject_unsafe_urls' => true ) ) ) ) {
 
 			// <link> types that contain oEmbed provider URLs
 			$linktypes = apply_filters( 'oembed_linktypes', array(
@@ -190,7 +190,7 @@ class WP_oEmbed {
 	 */
 	function _fetch_with_format( $provider_url_with_args, $format ) {
 		$provider_url_with_args = add_query_arg( 'format', $format, $provider_url_with_args );
-		$response = wp_remote_get( $provider_url_with_args );
+		$response = wp_remote_get( $provider_url_with_args, array( 'reject_unsafe_urls' => true ) );
 		if ( 501 == wp_remote_retrieve_response_code( $response ) )
 			return new WP_Error( 'not-implemented' );
 		if ( ! $body = wp_remote_retrieve_body( $response ) )
@@ -216,20 +216,28 @@ class WP_oEmbed {
 	 * @access private
 	 */
 	function _parse_xml( $response_body ) {
-		if ( function_exists('simplexml_load_string') ) {
-			$errors = libxml_use_internal_errors( 'true' );
-			$data = simplexml_load_string( $response_body );
-			libxml_use_internal_errors( $errors );
-			if ( ! is_object( $data ) )
-				return false;
-
-			$return = new stdClass;
-			foreach ( $data as $key => $value )
-				$return->$key = (string) $value;
-
-			return $return;
+		if ( !function_exists('simplexml_load_string') ) {
+			return false;
 		}
-		return false;
+		if ( ! function_exists( 'libxml_disable_entity_loader' ) )
+			return false;
+
+		$loader = libxml_disable_entity_loader( true );
+
+		$errors = libxml_use_internal_errors( true );
+		$data = simplexml_load_string( $response_body );
+		libxml_use_internal_errors( $errors );
+
+		$return = false;
+		if ( is_object( $data ) ) {
+			$return = new stdClass;
+			foreach ( $data as $key => $value ) {
+				$return->$key = (string) $value;
+			}
+		}
+
+		libxml_disable_entity_loader( $loader );
+		return $return;
 	}
 
 	/**

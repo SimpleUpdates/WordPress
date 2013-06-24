@@ -15,6 +15,7 @@
  * @uses WP_Image_Editor Extends class
  */
 class WP_Image_Editor_Imagick extends WP_Image_Editor {
+
 	protected $image = null; // Imagick Object
 
 	function __destruct() {
@@ -28,7 +29,7 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 	/**
 	 * Checks to see if current environment supports Imagick.
 	 *
-	 * We require Imagick 2.1.1 or greater, based on whether the queryFormats()
+	 * We require Imagick 2.2.0 or greater, based on whether the queryFormats()
 	 * method can be called statically.
 	 *
 	 * @since 3.5.0
@@ -36,11 +37,71 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 	 *
 	 * @return boolean
 	 */
-	public static function test( $args = null ) {
-		if ( ! extension_loaded( 'imagick' ) || ! is_callable( 'Imagick', 'queryFormats' ) )
+	public static function test( $args = array() ) {
+
+		// First, test Imagick's extension and classes.
+		if ( ! extension_loaded( 'imagick' ) || ! class_exists( 'Imagick' ) || ! class_exists( 'ImagickPixel' ) )
+			return false;
+
+		if ( version_compare( phpversion( 'imagick' ), '2.2.0', '<' ) )
+			return false;
+
+		$required_methods = array(
+			'clear',
+			'destroy',
+			'valid',
+			'getimage',
+			'writeimage',
+			'getimageblob',
+			'getimagegeometry',
+			'getimageformat',
+			'setimageformat',
+			'setimagecompression',
+			'setimagecompressionquality',
+			'setimagepage',
+			'scaleimage',
+			'cropimage',
+			'rotateimage',
+			'flipimage',
+			'flopimage',
+		);
+
+		// Now, test for deep requirements within Imagick.
+		if ( ! defined( 'imagick::COMPRESSION_JPEG' ) )
+			return false;
+
+		if ( array_diff( $required_methods, get_class_methods( 'Imagick' ) ) )
 			return false;
 
 		return true;
+	}
+
+	/**
+	 * Checks to see if editor supports the mime-type specified.
+	 *
+	 * @since 3.5.0
+	 * @access public
+	 *
+	 * @param string $mime_type
+	 * @return boolean
+	 */
+	public static function supports_mime_type( $mime_type ) {
+		$imagick_extension = strtoupper( self::get_extension( $mime_type ) );
+
+		if ( ! $imagick_extension )
+			return false;
+
+		// setIteratorIndex is optional unless mime is an animated format.
+		// Here, we just say no if you are missing it and aren't loading a jpeg.
+		if ( ! method_exists( 'Imagick', 'setIteratorIndex' ) && $mime_type != 'image/jpeg' )
+				return false;
+
+		try {
+			return ( (bool) Imagick::queryFormats( $imagick_extension ) );
+		}
+		catch ( Exception $e ) {
+			return false;
+		}
 	}
 
 	/**
@@ -51,12 +112,15 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 	 *
 	 * @return boolean|WP_Error True if loaded; WP_Error on failure.
 	 */
-	protected function load() {
+	public function load() {
 		if ( $this->image )
 			return true;
 
 		if ( ! is_file( $this->file ) && ! preg_match( '|^https?://|', $this->file ) )
 			return new WP_Error( 'error_loading_image', __('File doesn&#8217;t exist?'), $this->file );
+
+		// Even though Imagick uses less PHP memory than GD, set higher limit for users that have low PHP.ini limits
+		@ini_set( 'memory_limit', apply_filters( 'image_memory_limit', WP_MAX_MEMORY_LIMIT ) );
 
 		try {
 			$this->image = new Imagick( $this->file );
@@ -64,8 +128,10 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 			if( ! $this->image->valid() )
 				return new WP_Error( 'invalid_image', __('File is not an image.'), $this->file);
 
-			// Select the first frame to handle animated GIFs properly
-			$this->image->setIteratorIndex(0);
+			// Select the first frame to handle animated images properly
+			if ( is_callable( array( $this->image, 'setIteratorIndex' ) ) )
+				$this->image->setIteratorIndex(0);
+
 			$this->mime_type = $this->get_mime_type( $this->image->getImageFormat() );
 		}
 		catch ( Exception $e ) {
@@ -138,29 +204,6 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 	}
 
 	/**
-	 * Checks to see if editor supports the mime-type specified.
-	 *
-	 * @since 3.5.0
-	 * @access public
-	 *
-	 * @param string $mime_type
-	 * @return boolean
-	 */
-	public static function supports_mime_type( $mime_type ) {
-		if ( ! $mime_type )
-			return false;
-
-		$imagick_extension = strtoupper( self::get_extension( $mime_type ) );
-
-		try {
-			return ( (bool) Imagick::queryFormats( $imagick_extension ) );
-		}
-		catch ( Exception $e ) {
-			return false;
-		}
-	}
-
-	/**
 	 * Resizes current image.
 	 *
 	 * @since 3.5.0
@@ -205,7 +248,7 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 	 * @since 3.5.0
 	 * @access public
 	 *
-	 * @param array $sizes
+	 * @param array $sizes { {'width'=>int, 'height'=>int, 'crop'=>bool}, ... }
 	 * @return array
 	 */
 	public function multi_resize( $sizes ) {
@@ -225,10 +268,11 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 				$this->image->clear();
 				$this->image->destroy();
 				$this->image = null;
-				unset( $resized['path'] );
 
-				if ( ! is_wp_error( $resized ) && $resized )
+				if ( ! is_wp_error( $resized ) && $resized ) {
+					unset( $resized['path'] );
 					$metadata[$size] = $resized;
+				}
 			}
 
 			$this->size = $orig_size;
@@ -274,13 +318,13 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 					$dst_h = $src_h;
 
 				$this->image->scaleImage( $dst_w, $dst_h );
-				return $this->update_size( $dst_w, $dst_h );
+				return $this->update_size();
 			}
 		}
 		catch ( Exception $e ) {
 			return new WP_Error( 'image_crop_error', $e->getMessage() );
 		}
-		return $this->update_size( $src_w, $src_h );
+		return $this->update_size();
 	}
 
 	/**
@@ -312,7 +356,7 @@ class WP_Image_Editor_Imagick extends WP_Image_Editor {
 	 * @since 3.5.0
 	 * @access public
 	 *
-	 * @param boolean $horz Horizonal Flip
+	 * @param boolean $horz Horizontal Flip
 	 * @param boolean $vert Vertical Flip
 	 * @returns boolean|WP_Error
 	 */

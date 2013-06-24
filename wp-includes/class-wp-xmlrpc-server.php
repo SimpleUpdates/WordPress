@@ -90,8 +90,6 @@ class wp_xmlrpc_server extends IXR_Server {
 			'blogger.getUserInfo' => 'this:blogger_getUserInfo',
 			'blogger.getPost' => 'this:blogger_getPost',
 			'blogger.getRecentPosts' => 'this:blogger_getRecentPosts',
-			'blogger.getTemplate' => 'this:blogger_getTemplate',
-			'blogger.setTemplate' => 'this:blogger_setTemplate',
 			'blogger.newPost' => 'this:blogger_newPost',
 			'blogger.editPost' => 'this:blogger_editPost',
 			'blogger.deletePost' => 'this:blogger_deletePost',
@@ -107,8 +105,6 @@ class wp_xmlrpc_server extends IXR_Server {
 			// MetaWeblog API aliases for Blogger API
 			// see http://www.xmlrpc.com/stories/storyReader$2460
 			'metaWeblog.deletePost' => 'this:blogger_deletePost',
-			'metaWeblog.getTemplate' => 'this:blogger_getTemplate',
-			'metaWeblog.setTemplate' => 'this:blogger_setTemplate',
 			'metaWeblog.getUsersBlogs' => 'this:blogger_getUsersBlogs',
 
 			// MovableType API
@@ -1016,7 +1012,7 @@ class wp_xmlrpc_server extends IXR_Server {
 			if ( $post_data['post_type'] != get_post_type( $post_data['ID'] ) )
 				return new IXR_Error( 401, __( 'The post type may not be changed.' ) );
 		} else {
-			if ( ! current_user_can( $post_type->cap->edit_posts ) )
+			if ( ! current_user_can( $post_type->cap->create_posts ) || ! current_user_can( $post_type->cap->edit_posts ) )
 				return new IXR_Error( 401, __( 'Sorry, you are not allowed to post on this site.' ) );
 		}
 
@@ -3826,82 +3822,23 @@ class wp_xmlrpc_server extends IXR_Server {
 	}
 
 	/**
-	 * Retrieve blog_filename content.
+	 * Deprecated.
 	 *
 	 * @since 1.5.0
-	 *
-	 * @param array $args Method parameters.
-	 * @return string
+	 * @deprecated 3.5.0
 	 */
 	function blogger_getTemplate($args) {
-
-		$this->escape($args);
-
-		$blog_ID    = (int) $args[1];
-		$username = $args[2];
-		$password  = $args[3];
-		$template   = $args[4]; /* could be 'main' or 'archiveIndex', but we don't use it */
-
-		if ( !$user = $this->login($username, $password) )
-			return $this->error;
-
-		do_action('xmlrpc_call', 'blogger.getTemplate');
-
-		if ( !current_user_can('edit_themes') )
-			return new IXR_Error(401, __('Sorry, this user cannot edit the template.'));
-
-		/* warning: here we make the assumption that the blog's URL is on the same server */
-		$filename = get_option('home') . '/';
-		$filename = preg_replace('#https?://.+?/#', $_SERVER['DOCUMENT_ROOT'].'/', $filename);
-
-		$f = fopen($filename, 'r');
-		$content = fread($f, filesize($filename));
-		fclose($f);
-
-		/* so it is actually editable with a windows/mac client */
-		// FIXME: (or delete me) do we really want to cater to bad clients at the expense of good ones by BEEPing up their line breaks? commented. $content = str_replace("\n", "\r\n", $content);
-
-		return $content;
+		return new IXR_Error( 403, __('Sorry, that file cannot be edited.' ) );
 	}
 
 	/**
-	 * Updates the content of blog_filename.
+	 * Deprecated.
 	 *
 	 * @since 1.5.0
-	 *
-	 * @param array $args Method parameters.
-	 * @return bool True when done.
+	 * @deprecated 3.5.0
 	 */
 	function blogger_setTemplate($args) {
-
-		$this->escape($args);
-
-		$blog_ID    = (int) $args[1];
-		$username = $args[2];
-		$password  = $args[3];
-		$content    = $args[4];
-		$template   = $args[5]; /* could be 'main' or 'archiveIndex', but we don't use it */
-
-		if ( !$user = $this->login($username, $password) )
-			return $this->error;
-
-		do_action('xmlrpc_call', 'blogger.setTemplate');
-
-		if ( !current_user_can('edit_themes') )
-			return new IXR_Error(401, __('Sorry, this user cannot edit the template.'));
-
-		/* warning: here we make the assumption that the blog's URL is on the same server */
-		$filename = get_option('home') . '/';
-		$filename = preg_replace('#https?://.+?/#', $_SERVER['DOCUMENT_ROOT'].'/', $filename);
-
-		if ($f = fopen($filename, 'w+')) {
-			fwrite($f, $content);
-			fclose($f);
-		} else {
-			return new IXR_Error(500, __('Either the file is not writable, or something wrong happened. The file has not been updated.'));
-		}
-
-		return true;
+		return new IXR_Error( 403, __('Sorry, that file cannot be edited.' ) );
 	}
 
 	/**
@@ -3928,7 +3865,7 @@ class wp_xmlrpc_server extends IXR_Server {
 		do_action('xmlrpc_call', 'blogger.newPost');
 
 		$cap = ($publish) ? 'publish_posts' : 'edit_posts';
-		if ( !current_user_can($cap) )
+		if ( ! current_user_can( get_post_type_object( 'post' )->cap->create_posts ) || !current_user_can($cap) )
 			return new IXR_Error(401, __('Sorry, you are not allowed to post on this site.'));
 
 		$post_status = ($publish) ? 'publish' : 'draft';
@@ -4143,6 +4080,8 @@ class wp_xmlrpc_server extends IXR_Server {
 			$post_type = 'post';
 		}
 
+		if ( ! current_user_can( get_post_type_object( $post_type )->cap->create_posts ) )
+			return new IXR_Error( 401, __( 'Sorry, you are not allowed to publish posts on this site.' ) );
 		if ( !current_user_can( $cap ) )
 			return new IXR_Error( 401, $error_message );
 
@@ -5370,10 +5309,14 @@ class wp_xmlrpc_server extends IXR_Server {
 		$pagelinkedto = str_replace('&amp;', '&', $pagelinkedto);
 		$pagelinkedto = str_replace('&', '&amp;', $pagelinkedto);
 
+		$pagelinkedfrom = apply_filters( 'pingback_ping_source_uri', $pagelinkedfrom, $pagelinkedto );
+		if ( ! $pagelinkedfrom )
+			return $this->pingback_error( 0, __( 'A valid URL was not provided.' ) );
+
 		// Check if the page linked to is in our site
 		$pos1 = strpos($pagelinkedto, str_replace(array('http://www.','http://','https://www.','https://'), '', get_option('home')));
 		if ( !$pos1 )
-			return new IXR_Error(0, __('Is there no link to us?'));
+			return $this->pingback_error( 0, __( 'Is there no link to us?' ) );
 
 		// let's find which post is linked to
 		// FIXME: does url_to_postid() cover all these cases already?
@@ -5407,39 +5350,40 @@ class wp_xmlrpc_server extends IXR_Server {
 				$sql = $wpdb->prepare("SELECT ID FROM $wpdb->posts WHERE post_title RLIKE %s", like_escape( $title ) );
 				if (! ($post_ID = $wpdb->get_var($sql)) ) {
 					// returning unknown error '0' is better than die()ing
-			  		return new IXR_Error(0, '');
+			  		return $this->pingback_error( 0, '' );
 				}
 				$way = 'from the fragment (title)';
 			}
 		} else {
 			// TODO: Attempt to extract a post ID from the given URL
-	  		return new IXR_Error(33, __('The specified target URL cannot be used as a target. It either doesn&#8217;t exist, or it is not a pingback-enabled resource.'));
+	  		return $this->pingback_error( 33, __('The specified target URL cannot be used as a target. It either doesn&#8217;t exist, or it is not a pingback-enabled resource.' ) );
 		}
 		$post_ID = (int) $post_ID;
 
 		$post = get_post($post_ID);
 
 		if ( !$post ) // Post_ID not found
-	  		return new IXR_Error(33, __('The specified target URL cannot be used as a target. It either doesn&#8217;t exist, or it is not a pingback-enabled resource.'));
+	  		return $this->pingback_error( 33, __( 'The specified target URL cannot be used as a target. It either doesn&#8217;t exist, or it is not a pingback-enabled resource.' ) );
 
 		if ( $post_ID == url_to_postid($pagelinkedfrom) )
-			return new IXR_Error(0, __('The source URL and the target URL cannot both point to the same resource.'));
+			return $this->pingback_error( 0, __( 'The source URL and the target URL cannot both point to the same resource.' ) );
 
 		// Check if pings are on
 		if ( !pings_open($post) )
-	  		return new IXR_Error(33, __('The specified target URL cannot be used as a target. It either doesn&#8217;t exist, or it is not a pingback-enabled resource.'));
+	  		return $this->pingback_error( 33, __( 'The specified target URL cannot be used as a target. It either doesn&#8217;t exist, or it is not a pingback-enabled resource.' ) );
 
 		// Let's check that the remote site didn't already pingback this entry
 		if ( $wpdb->get_results( $wpdb->prepare("SELECT * FROM $wpdb->comments WHERE comment_post_ID = %d AND comment_author_url = %s", $post_ID, $pagelinkedfrom) ) )
-			return new IXR_Error( 48, __( 'The pingback has already been registered.' ) );
+			return $this->pingback_error( 48, __( 'The pingback has already been registered.' ) );
 
 		// very stupid, but gives time to the 'from' server to publish !
 		sleep(1);
 
 		// Let's check the remote site
-		$linea = wp_remote_fopen( $pagelinkedfrom );
+		$linea = wp_remote_retrieve_body( wp_remote_get( $pagelinkedfrom, array( 'timeout' => 10, 'redirection' => 0, 'reject_unsafe_urls' => true ) ) );
+
 		if ( !$linea )
-	  		return new IXR_Error(16, __('The source URL does not exist.'));
+	  		return $this->pingback_error( 16, __( 'The source URL does not exist.' ) );
 
 		$linea = apply_filters('pre_remote_source', $linea, $pagelinkedto);
 
@@ -5451,7 +5395,7 @@ class wp_xmlrpc_server extends IXR_Server {
 		preg_match('|<title>([^<]*?)</title>|is', $linea, $matchtitle);
 		$title = $matchtitle[1];
 		if ( empty( $title ) )
-			return new IXR_Error(32, __('We cannot find a title on that page.'));
+			return $this->pingback_error( 32, __('We cannot find a title on that page.' ) );
 
 		$linea = strip_tags( $linea, '<a>' ); // just keep the tag we need
 
@@ -5487,7 +5431,7 @@ class wp_xmlrpc_server extends IXR_Server {
 		}
 
 		if ( empty($context) ) // Link to target not found
-			return new IXR_Error(17, __('The source URL does not contain a link to the target URL, and so cannot be used as a source.'));
+			return $this->pingback_error( 17, __( 'The source URL does not contain a link to the target URL, and so cannot be used as a source.' ) );
 
 		$pagelinkedfrom = str_replace('&', '&amp;', $pagelinkedfrom);
 
@@ -5534,14 +5478,14 @@ class wp_xmlrpc_server extends IXR_Server {
 		$post_ID = url_to_postid($url);
 		if ( !$post_ID ) {
 			// We aren't sure that the resource is available and/or pingback enabled
-	  		return new IXR_Error(33, __('The specified target URL cannot be used as a target. It either doesn&#8217;t exist, or it is not a pingback-enabled resource.'));
+	  		return $this->pingback_error( 33, __( 'The specified target URL cannot be used as a target. It either doesn&#8217;t exist, or it is not a pingback-enabled resource.' ) );
 		}
 
 		$actual_post = get_post($post_ID, ARRAY_A);
 
 		if ( !$actual_post ) {
 			// No such post = resource not found
-	  		return new IXR_Error(32, __('The specified target URL does not exist.'));
+	  		return $this->pingback_error( 32, __('The specified target URL does not exist.' ) );
 		}
 
 		$comments = $wpdb->get_results( $wpdb->prepare("SELECT comment_author_url, comment_content, comment_author_IP, comment_type FROM $wpdb->comments WHERE comment_post_ID = %d", $post_ID) );
@@ -5556,5 +5500,9 @@ class wp_xmlrpc_server extends IXR_Server {
 		}
 
 		return $pingbacks;
+	}
+
+	protected function pingback_error( $code, $message ) {
+		return apply_filters( 'xmlrpc_pingback_error', new IXR_Error( $code, $message ) );
 	}
 }

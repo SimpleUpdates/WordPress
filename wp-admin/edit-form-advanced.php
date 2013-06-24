@@ -15,11 +15,6 @@ wp_enqueue_script('post');
 if ( wp_is_mobile() )
 	wp_enqueue_script( 'jquery-touch-punch' );
 
-if ( post_type_supports($post_type, 'editor') || post_type_supports($post_type, 'thumbnail') ) {
-	add_thickbox();
-	wp_enqueue_media();
-}
-
 /**
  * Post ID global
  * @name $post_ID
@@ -28,6 +23,11 @@ if ( post_type_supports($post_type, 'editor') || post_type_supports($post_type, 
 $post_ID = isset($post_ID) ? (int) $post_ID : 0;
 $user_ID = isset($user_ID) ? (int) $user_ID : 0;
 $action = isset($action) ? $action : '';
+
+if ( post_type_supports($post_type, 'editor') || post_type_supports($post_type, 'thumbnail') ) {
+	add_thickbox();
+	wp_enqueue_media( array( 'post' => $post_ID ) );
+}
 
 $messages = array();
 $messages['post'] = array(
@@ -59,7 +59,7 @@ $messages['page'] = array(
 	 9 => sprintf( __('Page scheduled for: <strong>%1$s</strong>. <a target="_blank" href="%2$s">Preview page</a>'), date_i18n( __( 'M j, Y @ G:i' ), strtotime( $post->post_date ) ), esc_url( get_permalink($post_ID) ) ),
 	10 => sprintf( __('Page draft updated. <a target="_blank" href="%s">Preview page</a>'), esc_url( add_query_arg( 'preview', 'true', get_permalink($post_ID) ) ) ),
 );
-$messages['attachment'] = array_fill( 1, 10, __( 'Media attachment updated' ) ); // Hack, for now.
+$messages['attachment'] = array_fill( 1, 10, __( 'Media attachment updated.' ) ); // Hack, for now.
 
 $messages = apply_filters( 'post_updated_messages', $messages );
 
@@ -74,7 +74,7 @@ if ( isset($_GET['message']) ) {
 
 $notice = false;
 $form_extra = '';
-if ( 'auto-draft' == get_post_status( $post ) ) {
+if ( 'auto-draft' == $post->post_status ) {
 	if ( 'edit' == $action )
 		$post->post_title = '';
 	$autosave = false;
@@ -107,7 +107,6 @@ if ( 'attachment' == $post_type ) {
 	wp_enqueue_script( 'image-edit' );
 	wp_enqueue_style( 'imgareaselect' );
 	add_meta_box( 'submitdiv', __('Save'), 'attachment_submit_meta_box', null, 'side', 'core' );
-	add_meta_box( 'attachmentdata', __('Attachment Page Content'), 'attachment_content_meta_box', null, 'normal', 'core' );
 	add_action( 'edit_form_after_title', 'edit_form_image_editor' );
 } else {
 	add_meta_box( 'submitdiv', __( 'Publish' ), 'post_submit_meta_box', null, 'side', 'core' );
@@ -145,7 +144,7 @@ if ( post_type_supports($post_type, 'trackbacks') )
 if ( post_type_supports($post_type, 'custom-fields') )
 	add_meta_box('postcustom', __('Custom Fields'), 'post_custom_meta_box', null, 'normal', 'core');
 
-do_action('dbx_post_advanced');
+do_action('dbx_post_advanced', $post);
 if ( post_type_supports($post_type, 'comments') )
 	add_meta_box('commentstatusdiv', __('Discussion'), 'post_comment_status_meta_box', null, 'normal', 'core');
 
@@ -173,7 +172,7 @@ do_action('do_meta_boxes', $post_type, 'side', $post);
 add_screen_option('layout_columns', array('max' => 2, 'default' => 2) );
 
 if ( 'post' == $post_type ) {
-	$customize_display = '<p>' . __('The title field and the big Post Editing Area are fixed in place, but you can reposition all the other boxes using drag and drop, and can minimize or expand them by clicking the title bar of each box. Use the Screen Options tab to unhide more boxes (Excerpt, Send Trackbacks, Custom Fields, Discussion, Slug, Author) or to choose a 1- or 2-column layout for this screen.') . '</p>';
+	$customize_display = '<p>' . __('The title field and the big Post Editing Area are fixed in place, but you can reposition all the other boxes using drag and drop. You can also minimize or expand them by clicking the title bar of each box. Use the Screen Options tab to unhide more boxes (Excerpt, Send Trackbacks, Custom Fields, Discussion, Slug, Author) or to choose a 1- or 2-column layout for this screen.') . '</p>';
 
 	get_current_screen()->add_help_tab( array(
 		'id'      => 'customize-display',
@@ -190,31 +189,6 @@ if ( 'post' == $post_type ) {
 		'content' => $title_and_editor,
 	) );
 
-	$publish_box = '<p>' . __('<strong>Publish</strong> - You can set the terms of publishing your post in the Publish box. For Status, Visibility, and Publish (immediately), click on the Edit link to reveal more options. Visibility includes options for password-protecting a post or making it stay at the top of your blog indefinitely (sticky). Publish (immediately) allows you to set a future or past date and time, so you can schedule a post to be published in the future or backdate a post.') . '</p>';
-
-	if ( current_theme_supports( 'post-formats' ) && post_type_supports( 'post', 'post-formats' ) ) {
-		$publish_box .= '<p>' . __( '<strong>Post Format</strong> - This designates how your theme will display a specific post. For example, you could have a <em>standard</em> blog post with a title and paragraphs, or a short <em>aside</em> that omits the title and contains a short text blurb. Please refer to the Codex for <a href="http://codex.wordpress.org/Post_Formats#Supported_Formats">descriptions of each post format</a>. Your theme could enable all or some of 10 possible formats.' ) . '</p>';
-	}
-
-	if ( current_theme_supports( 'post-thumbnails' ) && post_type_supports( 'post', 'thumbnail' ) ) {
-		$publish_box .= '<p>' . __('<strong>Featured Image</strong> - This allows you to associate an image with your post without inserting it. This is usually useful only if your theme makes use of the featured image as a post thumbnail on the home page, a custom header, etc.') . '</p>';
-	}
-
-	get_current_screen()->add_help_tab( array(
-		'id'      => 'publish-box',
-		'title'   => __('Publish Box'),
-		'content' => $publish_box,
-	) );
-
-	$discussion_settings  = '<p>' . __('<strong>Send Trackbacks</strong> - Trackbacks are a way to notify legacy blog systems that you&#8217;ve linked to them. Enter the URL(s) you want to send trackbacks. If you link to other WordPress sites they&#8217;ll be notified automatically using pingbacks, and this field is unnecessary.') . '</p>';
-	$discussion_settings .= '<p>' . __('<strong>Discussion</strong> - You can turn comments and pings on or off, and if there are comments on the post, you can see them here and moderate them.') . '</p>';
-
-	get_current_screen()->add_help_tab( array(
-		'id'      => 'discussion-settings',
-		'title'   => __('Discussion Settings'),
-		'content' => $discussion_settings,
-	) );
-
 	get_current_screen()->set_help_sidebar(
 			'<p>' . sprintf(__('You can also create posts with the <a href="%s">Press This bookmarklet</a>.'), 'options-writing.php') . '</p>' .
 			'<p><strong>' . __('For more information:') . '</strong></p>' .
@@ -229,16 +203,6 @@ if ( 'post' == $post_type ) {
 		'id'      => 'about-pages',
 		'title'   => __('About Pages'),
 		'content' => $about_pages,
-	) );
-
-	$page_attributes = '<p>' . __('<strong>Parent</strong> - You can arrange your pages in hierarchies. For example, you could have an &#8220;About&#8221; page that has &#8220;Life Story&#8221; and &#8220;My Dog&#8221; pages under it. There are no limits to how many levels you can nest pages.') . '</p>' .
-		'<p>' . __('<strong>Template</strong> - Some themes have custom templates you can use for certain pages that might have additional features or custom layouts. If so, you&#8217;ll see them in this dropdown menu.') . '</p>' .
-		'<p>' . __('<strong>Order</strong> - Pages are usually ordered alphabetically, but you can choose your own order by entering a number (1 for first, etc.) in this field.') . '</p>';
-
-	get_current_screen()->add_help_tab( array(
-		'id' => 'page-attributes',
-		'title' => __('Page Attributes'),
-		'content' => $page_attributes,
 	) );
 
 	get_current_screen()->set_help_sidebar(
@@ -265,6 +229,57 @@ if ( 'post' == $post_type ) {
 	);
 }
 
+if ( 'post' == $post_type || 'page' == $post_type ) {
+	$inserting_media = '<p>' . __( 'You can upload and insert media (images, audio, documents, etc.) by clicking the Add Media button. You can select from the images and files already uploaded to the Media Library, or upload new media to add to your page or post. To create an image gallery, select the images to add and click the &#8220;Create a new gallery&#8221; button.' ) . '</p>';
+	$inserting_media .= '<p>' . __( 'You can also embed media from many popular websites including Twitter, YouTube, Flickr and others by pasting the media URL on its own line into the content of your post/page. Please refer to the Codex to <a href="http://codex.wordpress.org/Embeds">learn more about embeds</a>.' ) . '</p>';
+
+	get_current_screen()->add_help_tab( array(
+		'id'		=> 'inserting-media',
+		'title'		=> __( 'Inserting Media' ),
+		'content' 	=> $inserting_media,
+	) );
+}
+
+if ( 'post' == $post_type ) {
+	$publish_box = '<p>' . __('Several boxes on this screen contain settings for how your content will be published, including:') . '</p>';
+	$publish_box .= '<ul><li>' . __('<strong>Publish</strong> - You can set the terms of publishing your post in the Publish box. For Status, Visibility, and Publish (immediately), click on the Edit link to reveal more options. Visibility includes options for password-protecting a post or making it stay at the top of your blog indefinitely (sticky). Publish (immediately) allows you to set a future or past date and time, so you can schedule a post to be published in the future or backdate a post.') . '</li>';
+
+	if ( current_theme_supports( 'post-formats' ) && post_type_supports( 'post', 'post-formats' ) ) {
+		$publish_box .= '<li>' . __( '<strong>Format</strong> - Post Formats designate how your theme will display a specific post. For example, you could have a <em>standard</em> blog post with a title and paragraphs, or a short <em>aside</em> that omits the title and contains a short text blurb. Please refer to the Codex for <a href="http://codex.wordpress.org/Post_Formats#Supported_Formats">descriptions of each post format</a>. Your theme could enable all or some of 10 possible formats.' ) . '</li>';
+	}
+
+	if ( current_theme_supports( 'post-thumbnails' ) && post_type_supports( 'post', 'thumbnail' ) ) {
+		$publish_box .= '<li>' . __('<strong>Featured Image</strong> - This allows you to associate an image with your post without inserting it. This is usually useful only if your theme makes use of the featured image as a post thumbnail on the home page, a custom header, etc.') . '</li>';
+	}
+
+	$publish_box .= '</ul>';
+
+	get_current_screen()->add_help_tab( array(
+		'id'      => 'publish-box',
+		'title'   => __('Publish Settings'),
+		'content' => $publish_box,
+	) );
+
+	$discussion_settings  = '<p>' . __('<strong>Send Trackbacks</strong> - Trackbacks are a way to notify legacy blog systems that you&#8217;ve linked to them. Enter the URL(s) you want to send trackbacks. If you link to other WordPress sites they&#8217;ll be notified automatically using pingbacks, and this field is unnecessary.') . '</p>';
+	$discussion_settings .= '<p>' . __('<strong>Discussion</strong> - You can turn comments and pings on or off, and if there are comments on the post, you can see them here and moderate them.') . '</p>';
+
+	get_current_screen()->add_help_tab( array(
+		'id'      => 'discussion-settings',
+		'title'   => __('Discussion Settings'),
+		'content' => $discussion_settings,
+	) );
+} elseif ( 'page' == $post_type ) {
+	$page_attributes = '<p>' . __('<strong>Parent</strong> - You can arrange your pages in hierarchies. For example, you could have an &#8220;About&#8221; page that has &#8220;Life Story&#8221; and &#8220;My Dog&#8221; pages under it. There are no limits to how many levels you can nest pages.') . '</p>' .
+		'<p>' . __('<strong>Template</strong> - Some themes have custom templates you can use for certain pages that might have additional features or custom layouts. If so, you&#8217;ll see them in this dropdown menu.') . '</p>' .
+		'<p>' . __('<strong>Order</strong> - Pages are usually ordered alphabetically, but you can choose your own order by entering a number (1 for first, etc.) in this field.') . '</p>';
+
+	get_current_screen()->add_help_tab( array(
+		'id' => 'page-attributes',
+		'title' => __('Page Attributes'),
+		'content' => $page_attributes,
+	) );
+}
+
 require_once('./admin-header.php');
 ?>
 
@@ -281,7 +296,7 @@ if ( isset( $post_new_file ) && current_user_can( $post_type_object->cap->create
 <?php if ( $message ) : ?>
 <div id="message" class="updated"><p><?php echo $message; ?></p></div>
 <?php endif; ?>
-<form name="post" action="post.php" method="post" id="post"<?php do_action('post_edit_form_tag'); ?>>
+<form name="post" action="post.php" method="post" id="post"<?php do_action('post_edit_form_tag', $post); ?>>
 <?php wp_nonce_field($nonce_action); ?>
 <input type="hidden" id="user-id" name="user_ID" value="<?php echo (int) $user_ID ?>" />
 <input type="hidden" id="hiddenaction" name="action" value="<?php echo esc_attr( $form_action ) ?>" />
@@ -322,9 +337,9 @@ if ( !empty($shortlink) )
     $sample_permalink_html .= '<input id="shortlink" type="hidden" value="' . esc_attr($shortlink) . '" /><a href="#" class="button button-small" onclick="prompt(&#39;URL:&#39;, jQuery(\'#shortlink\').val()); return false;">' . __('Get Shortlink') . '</a>';
 
 if ( $post_type_object->public && ! ( 'pending' == get_post_status( $post ) && !current_user_can( $post_type_object->cap->publish_posts ) ) ) { ?>
-	<div id="edit-slug-box">
+	<div id="edit-slug-box" class="hide-if-no-js">
 	<?php
-		if ( $sample_permalink_html && 'auto-draft' != get_post_status( $post ) )
+		if ( $sample_permalink_html && 'auto-draft' != $post->post_status )
 			echo $sample_permalink_html;
 	?>
 	</div>
@@ -339,7 +354,7 @@ wp_nonce_field( 'samplepermalink', 'samplepermalinknonce', false );
 <?php
 }
 
-do_action( 'edit_form_after_title' );
+do_action( 'edit_form_after_title', $post );
 
 if ( post_type_supports($post_type, 'editor') ) {
 ?>
@@ -352,7 +367,7 @@ if ( post_type_supports($post_type, 'editor') ) {
 	<td class="autosave-info">
 	<span class="autosave-message">&nbsp;</span>
 <?php
-	if ( 'auto-draft' != get_post_status( $post ) ) {
+	if ( 'auto-draft' != $post->post_status ) {
 		echo '<span id="last-edit">';
 		if ( $last_id = get_post_meta($post_ID, '_edit_last', true) ) {
 			$last_user = get_userdata($last_id);
@@ -368,16 +383,16 @@ if ( post_type_supports($post_type, 'editor') ) {
 </div>
 <?php } ?>
 
-<?php do_action( 'edit_form_after_editor' ); ?>
+<?php do_action( 'edit_form_after_editor', $post ); ?>
 </div><!-- /post-body-content -->
 
 <div id="postbox-container-1" class="postbox-container">
 <?php
 
 if ( 'page' == $post_type )
-	do_action('submitpage_box');
+	do_action('submitpage_box', $post);
 else
-	do_action('submitpost_box');
+	do_action('submitpost_box', $post);
 
 do_meta_boxes($post_type, 'side', $post);
 
@@ -389,9 +404,9 @@ do_meta_boxes($post_type, 'side', $post);
 do_meta_boxes(null, 'normal', $post);
 
 if ( 'page' == $post_type )
-	do_action('edit_page_form');
+	do_action('edit_page_form', $post);
 else
-	do_action('edit_form_advanced');
+	do_action('edit_form_advanced', $post);
 
 do_meta_boxes(null, 'advanced', $post);
 
@@ -399,7 +414,7 @@ do_meta_boxes(null, 'advanced', $post);
 </div>
 <?php
 
-do_action('dbx_post_sidebar');
+do_action('dbx_post_sidebar', $post);
 
 ?>
 </div><!-- /post-body -->
